@@ -96,7 +96,7 @@ export async function GET(request: NextRequest) {
     const bots = await Bot.find({ _id: { $in: botIds } }).lean();
     const botMap: Record<string, string> = {};
     bots.forEach(bot => {
-      botMap[bot._id.toString()] = bot.name || 'Unknown Bot';
+      botMap[String(bot._id)] = bot.name || 'Unknown Bot';
     });
 
     const paymentsWithBotNames = payments.map(payment => ({

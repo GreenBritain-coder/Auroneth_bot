@@ -59,13 +59,13 @@ export async function GET(request: NextRequest) {
     const productIdMap: Record<string, string> = {}; // Maps all ID formats to canonical format
     
     products.forEach(product => {
-      const productId = product._id.toString();
+      const productId = String(product._id);
       productIdSet.add(productId);
       productIdMap[productId] = productId;
       
       // Also add ObjectId format if it's different
       if (product._id && typeof product._id === 'object') {
-        const objIdStr = (product._id as any).toString();
+        const objIdStr = String(product._id);
         if (objIdStr !== productId) {
           productIdSet.add(objIdStr);
           productIdMap[objIdStr] = productId;
@@ -81,11 +81,11 @@ export async function GET(request: NextRequest) {
     const allProducts = await Product.find({}).lean();
     const allProductMap: Record<string, any> = {};
     allProducts.forEach(product => {
-      const productId = product._id.toString();
+      const productId = String(product._id);
       allProductMap[productId] = product;
       // Also map ObjectId format
       if (product._id && typeof product._id === 'object') {
-        allProductMap[(product._id as any).toString()] = product;
+        allProductMap[String(product._id)] = product;
       }
     });
     
@@ -93,12 +93,12 @@ export async function GET(request: NextRequest) {
     const orders = allOrders.filter(order => {
       if (!order.productId) return false;
       
-      const orderProductId = order.productId.toString();
+      const orderProductId = String(order.productId);
       const product = allProductMap[orderProductId];
       
       if (!product || !product.subcategory_id) return false;
       
-      const productSubcategoryId = product.subcategory_id.toString();
+      const productSubcategoryId = String(product.subcategory_id);
       return subcategoryIds.includes(productSubcategoryId);
     });
     
@@ -109,12 +109,12 @@ export async function GET(request: NextRequest) {
     
     orders.forEach(order => {
       if (!order.productId) {
-        console.log(`[Categories API] Order ${order._id} has no productId`);
+        console.log(`[Categories API] Order ${String(order._id)} has no productId`);
         return;
       }
       
       // Get the product for this order
-      const orderProductId = order.productId.toString();
+      const orderProductId = String(order.productId);
       const product = allProductMap[orderProductId];
       
       if (!product) {
@@ -123,7 +123,7 @@ export async function GET(request: NextRequest) {
       }
       
       // Use the product's canonical ID
-      const productCanonicalId = product._id.toString();
+      const productCanonicalId = String(product._id);
       
       // Increment count for this product
       orderCountsByProduct[productCanonicalId] = (orderCountsByProduct[productCanonicalId] || 0) + 1;
@@ -131,7 +131,7 @@ export async function GET(request: NextRequest) {
     
     // Also ensure products in our category are in the map (even with 0 orders)
     products.forEach(product => {
-      const productId = product._id.toString();
+      const productId = String(product._id);
       if (!(productId in orderCountsByProduct)) {
         orderCountsByProduct[productId] = 0;
       }
@@ -144,8 +144,8 @@ export async function GET(request: NextRequest) {
     
     // First, add products from our category
     products.forEach(product => {
-      const subcategoryId = product.subcategory_id?.toString();
-      const canonicalProductId = product._id.toString();
+      const subcategoryId = product.subcategory_id != null ? String(product.subcategory_id) : undefined;
+      const canonicalProductId = String(product._id);
       if (subcategoryId && subcategoryIds.includes(subcategoryId)) {
         if (!productsBySubcategory[subcategoryId]) {
           productsBySubcategory[subcategoryId] = [];
@@ -159,12 +159,12 @@ export async function GET(request: NextRequest) {
     // Also add products from orders that belong to our subcategories
     orders.forEach(order => {
       if (!order.productId) return;
-      const orderProductId = order.productId.toString();
+      const orderProductId = String(order.productId);
       const product = allProductMap[orderProductId];
       if (product && product.subcategory_id) {
-        const subcategoryId = product.subcategory_id.toString();
+        const subcategoryId = String(product.subcategory_id);
         if (subcategoryIds.includes(subcategoryId)) {
-          const canonicalProductId = product._id.toString();
+          const canonicalProductId = String(product._id);
           if (!productsBySubcategory[subcategoryId]) {
             productsBySubcategory[subcategoryId] = [];
           }
@@ -178,19 +178,19 @@ export async function GET(request: NextRequest) {
     // Map subcategories to categories
     const subcategoriesByCategory: Record<string, string[]> = {};
     subcategories.forEach(subcategory => {
-      const categoryId = subcategory.category_id?.toString();
+      const categoryId = subcategory.category_id != null ? String(subcategory.category_id) : undefined;
       if (categoryId) {
         if (!subcategoriesByCategory[categoryId]) {
           subcategoriesByCategory[categoryId] = [];
         }
-        subcategoriesByCategory[categoryId].push(subcategory._id.toString());
+        subcategoriesByCategory[categoryId].push(String(subcategory._id));
       }
     });
     
     // Calculate order counts per category
     const orderCountsByCategory: Record<string, number> = {};
     categories.forEach(category => {
-      const categoryId = category._id.toString();
+      const categoryId = String(category._id);
       const subcategoryIds = subcategoriesByCategory[categoryId] || [];
       
       let totalOrders = 0;
@@ -207,7 +207,7 @@ export async function GET(request: NextRequest) {
     // Add order counts to categories
     const categoriesWithOrderCounts = categories.map(category => ({
       ...category,
-      orderCount: orderCountsByCategory[category._id.toString()] || 0
+      orderCount: orderCountsByCategory[String(category._id)] || 0
     }));
     
     return NextResponse.json(categoriesWithOrderCounts);

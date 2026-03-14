@@ -34,7 +34,7 @@ export async function GET(request: NextRequest) {
       const allBots = await Bot.find({}).lean();
       const botMap: Record<string, { name: string; owner?: string }> = {};
       allBots.forEach(bot => {
-        botMap[bot._id.toString()] = {
+        botMap[String(bot._id)] = {
           name: bot.name || 'Unknown Bot',
           owner: bot.owner || undefined
         };
@@ -52,7 +52,7 @@ export async function GET(request: NextRequest) {
       }> = {};
 
       allOrders.forEach(order => {
-        const botId = order.botId?.toString() || 'unknown';
+        const botId = order.botId != null ? String(order.botId) : 'unknown';
         const botInfo = botMap[botId] || { name: 'Unknown Bot' };
         const commission = order.commission || 0;
         const orderAmount = order.amount || 0;
@@ -238,10 +238,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Wallet address is required' }, { status: 400 });
     }
 
-    // Get user's bots to calculate available earnings
-    const userBots = await Bot.find(
-      payload.role === 'super-admin' ? {} : { owner: payload.userId }
-    );
+    // Get user's bots to calculate available earnings (super-admin already returned above)
+    const userBots = await Bot.find({ owner: payload.userId });
     const userBotIds = userBots.map(b => b._id.toString());
 
     // Get all paid orders for user's bots

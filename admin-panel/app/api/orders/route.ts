@@ -37,15 +37,16 @@ export async function GET(request: NextRequest) {
     // Fetch invoices to get notes - invoices are stored in 'invoices' collection
     // Invoice invoice_id matches order _id
     const db = mongoose.connection.db;
+    if (!db) throw new Error('Database not connected');
     const invoicesCollection = db.collection('invoices');
     
     // Get all invoice IDs (order IDs) to fetch notes
     const orderIds = orders.map(o => {
       if (o._id) {
-        return typeof o._id === 'string' ? o._id : o._id.toString();
+        return typeof o._id === 'string' ? o._id : String(o._id);
       }
       return null;
-    }).filter(id => id !== null);
+    }).filter((id): id is string => id !== null);
     
     // Fetch invoices for these orders
     const invoices = await invoicesCollection.find({
@@ -64,8 +65,8 @@ export async function GET(request: NextRequest) {
     const { Bot } = await import('../../../lib/models');
     const uniqueBotIds = [...new Set(orders.map(o => {
       const botId = o.botId;
-      return typeof botId === 'string' ? botId : botId.toString();
-    }))];
+      return botId != null ? (typeof botId === 'string' ? botId : String(botId)) : undefined;
+    }))].filter((id): id is string => id !== undefined);
     
     const bots = await Bot.find({
       _id: { $in: uniqueBotIds }
@@ -74,7 +75,7 @@ export async function GET(request: NextRequest) {
     // Create a map of botId -> bot name
     const botNamesMap: Record<string, string> = {};
     bots.forEach(bot => {
-      const botId = bot._id.toString();
+      const botId = String(bot._id);
       botNamesMap[botId] = bot.name || 'Unknown Bot';
     });
     
@@ -95,8 +96,8 @@ export async function GET(request: NextRequest) {
         if (order._id) {
           if (typeof order._id === 'string') {
             orderId = order._id;
-          } else if (order._id.toString) {
-            orderId = order._id.toString();
+          } else if (order._id != null) {
+            orderId = String(order._id);
           } else {
             orderId = String(order._id);
           }
@@ -121,14 +122,14 @@ export async function GET(request: NextRequest) {
           console.log(`Order ${orderId}: NO encrypted_address`);
         }
         
-        const botId = order.botId?.toString() || order.botId;
+        const botId = order.botId != null ? String(order.botId) : order.botId;
         
         return {
           ...order,
           _id: orderId, // Explicitly set _id as string
           botId: botId,
           botName: botNamesMap[botId] || 'Unknown Bot',
-          productId: order.productId?.toString() || order.productId,
+          productId: order.productId != null ? String(order.productId) : order.productId,
           // Include encrypted_address if it exists (for UI to show "View Address" button)
           // Only include if it's actually set (not empty string)
           encrypted_address: order.encrypted_address && order.encrypted_address.trim() ? order.encrypted_address : undefined,

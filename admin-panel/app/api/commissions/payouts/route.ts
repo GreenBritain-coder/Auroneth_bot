@@ -38,7 +38,7 @@ export async function GET(request: NextRequest) {
         .lean();
       
       // Create a map of userId -> username
-      const adminMap = new Map(admins.map(a => [a._id.toString(), a.username]));
+      const adminMap = new Map(admins.map(a => [String(a._id), a.username]));
       
       // Add owner username to each payout
       const enrichedPayouts = payouts.map(payout => ({
