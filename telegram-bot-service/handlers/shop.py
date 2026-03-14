@@ -320,7 +320,7 @@ async def show_product_quantity_interface(callback: CallbackQuery, product: dict
         wishlist_buttons.append(InlineKeyboardButton(text=f"{review_count} reviews for this product", callback_data=f"view_reviews:{product_id}"))
     keyboard_buttons.append(wishlist_buttons)
     
-    # Back button
+    # Back buttons
     if actual_variation_index is not None:
         keyboard_buttons.append([
             InlineKeyboardButton(text="⬅️ Back", callback_data=f"product:{product_id}")
@@ -329,6 +329,9 @@ async def show_product_quantity_interface(callback: CallbackQuery, product: dict
         keyboard_buttons.append([
             InlineKeyboardButton(text="⬅️ Back", callback_data=f"subcategory:{product.get('subcategory_id')}")
         ])
+    keyboard_buttons.append([
+        InlineKeyboardButton(text="📋 Back to Menu", callback_data="menu")
+    ])
     
     keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
     
@@ -468,9 +471,12 @@ async def handle_shop_start(callback: CallbackQuery):
             )
         ])
     
-    # Add cart button
+    # Add cart and back to menu buttons
     keyboard_buttons.append([
         InlineKeyboardButton(text="🛒 View Cart", callback_data="view_cart")
+    ])
+    keyboard_buttons.append([
+        InlineKeyboardButton(text="📋 Back to Menu", callback_data="menu")
     ])
     
     keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
@@ -544,9 +550,12 @@ async def handle_category(callback: CallbackQuery):
             )
         ])
     
-    # Add back button
+    # Add back buttons
     keyboard_buttons.append([
         InlineKeyboardButton(text="⬅️ Back to Categories", callback_data="shop")
+    ])
+    keyboard_buttons.append([
+        InlineKeyboardButton(text="📋 Back to Menu", callback_data="menu")
     ])
     
     keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
@@ -667,12 +676,13 @@ async def handle_subcategory(callback: CallbackQuery):
     if subcategory:
         category = await category_collection.find_one({"_id": subcategory.get("category_id")})
         if category:
-            back_keyboard = InlineKeyboardMarkup(inline_keyboard=[[
-                InlineKeyboardButton(
+            back_keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(
                     text="⬅️ Back to Subcategories",
                     callback_data=f"category:{category['_id']}"
-                )
-            ]])
+                )],
+                [InlineKeyboardButton(text="📋 Back to Menu", callback_data="menu")]
+            ])
             await callback.message.answer("⬅️", reply_markup=back_keyboard)
 
 
@@ -1841,7 +1851,11 @@ async def handle_view_cart(callback: CallbackQuery):
     })
     
     if not cart or not cart.get("items"):
-        await callback.message.answer("🛒 Your cart is empty.")
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🛍️ Continue Shopping", callback_data="shop")],
+            [InlineKeyboardButton(text="📋 Back to Menu", callback_data="menu")]
+        ])
+        await callback.message.answer("🛒 Your cart is empty.", reply_markup=keyboard)
         return
     
     # Build cart message
@@ -1896,7 +1910,8 @@ async def handle_view_cart(callback: CallbackQuery):
     keyboard_buttons = [
         [InlineKeyboardButton(text="💳 Checkout", callback_data="checkout")],
         [InlineKeyboardButton(text="🗑️ Clear Cart", callback_data="clear_cart")],
-        [InlineKeyboardButton(text="⬅️ Continue Shopping", callback_data="shop")]
+        [InlineKeyboardButton(text="⬅️ Continue Shopping", callback_data="shop")],
+        [InlineKeyboardButton(text="📋 Back to Menu", callback_data="menu")]
     ]
     keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
     
