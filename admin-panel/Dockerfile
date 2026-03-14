@@ -6,11 +6,15 @@ RUN apk add --no-cache libc6-compat
 WORKDIR /app
 
 COPY package.json package-lock.json* ./
+# Force development so devDependencies (typescript, @types/*) are installed for build
+ENV NODE_ENV=development
 RUN npm ci
 
 # Rebuild the source code only when needed
 FROM base AS builder
 WORKDIR /app
+# Keep development for npm run build (needs typescript etc.)
+ENV NODE_ENV=development
 COPY --from=deps /app/node_modules ./node_modules
 # CACHEBUST: pass --build-arg CACHEBUST=$(date +%s) to force full rebuild (e.g. in Coolify Build Args)
 ARG CACHEBUST=1

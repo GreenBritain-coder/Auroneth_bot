@@ -58,6 +58,20 @@ This message comes from **Coolify’s reverse proxy**, not from the app. It mean
 3. **Check port** — The front-page Dockerfile exposes **3000**. In the app’s Coolify configuration, **Ports Exposes** (or Port) must be **3000** so the proxy forwards correctly.
 4. **Redeploy** — After changing env or port, click **Deploy** and wait until the new container is **Running**, then reload the site.
 
+### Deployment failed (exit code 255, RuntimeException)
+
+**If the build fails with "Command execution failed (exit code 255)" or "RuntimeException" in ExecuteRemoteCommand:**
+
+1. **NODE_ENV at build time** — Coolify injects `NODE_ENV=production` as a build arg. That can skip devDependencies (TypeScript, etc.) and break the Next.js build. The admin-panel Dockerfile now forces `NODE_ENV=development` during install/build. If it still fails, in Coolify → admin-panel → **Configuration** → **Environment Variables** → set `NODE_ENV` to **Runtime only** (uncheck "Available at Buildtime").
+
+2. **Build timeout** — Next.js builds can take 3–5+ minutes. If Coolify or your server has a short timeout, the build may be killed. Try deploying again; transient timeouts often succeed on retry.
+
+3. **Memory** — Next.js build needs ~1–2GB RAM. If the deployment server is low on memory, the build can be killed. Check server resources.
+
+4. **Retry** — Click **Redeploy**. Many deployment failures are transient (network, timeout).
+
+---
+
 ### New changes not showing after deploy (e.g. dynamic sales/rating, Orders table scroll, UI fixes)
 
 **If you pushed fixes to GitHub and redeployed but the live site still shows the old version:**
