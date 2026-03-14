@@ -24,21 +24,40 @@ export async function GET(request: NextRequest) {
       categories = await Category.find({}).sort({ order: 1 }).lean();
     } else {
       const { Bot } = await import('../../../lib/models');
-      const userBots = await Bot.find({ owner: payload.userId });
+      // Match owner as string or ObjectId (MongoDB may store either)
+      let userBots = await Bot.find({ owner: payload.userId });
+      if (userBots.length === 0 && payload.userId && /^[a-f0-9]{24}$/i.test(payload.userId)) {
+        try {
+          userBots = await Bot.find({ owner: new mongoose.Types.ObjectId(payload.userId) });
+        } catch {}
+      }
       const userBotIds = userBots.map(b => b._id.toString());
-      // Match both string and ObjectId formats (MongoDB may store bot_ids as either)
-      const matchIds: (string | mongoose.Types.ObjectId)[] = [...userBotIds];
-      userBotIds.forEach(id => {
-        if (/^[a-f0-9]{24}$/i.test(id)) {
-          try {
-            matchIds.push(new mongoose.Types.ObjectId(id));
-          } catch {}
-        }
-      });
       
-      categories = await Category.find({
-        bot_ids: { $in: matchIds }
-      }).sort({ order: 1 }).lean();
+      if (userBotIds.length === 0) {
+        // No bots found - show all categories as fallback so bot-owner can still create products
+        categories = await Category.find({}).sort({ order: 1 }).lean();
+      } else {
+        // Match category bot_ids (may be stored as string or ObjectId)
+        const matchIds: (string | mongoose.Types.ObjectId)[] = [...userBotIds];
+        userBotIds.forEach(id => {
+          if (/^[a-f0-9]{24}$/i.test(id)) {
+            try {
+              matchIds.push(new mongoose.Types.ObjectId(id));
+            } catch {}
+          }
+        });
+        
+        categories = await Category.find({
+          $or: [
+            { bot_ids: { $in: matchIds } },
+            { bot_ids: { $size: 0 } }  // Include unassigned categories
+          ]
+        }).sort({ order: 1 }).lean();
+        // Fallback: if still empty, show all categories (e.g. owner/bot_id format mismatch)
+        if (categories.length === 0) {
+          categories = await Category.find({}).sort({ order: 1 }).lean();
+        }
+      }
     }
     
     // Calculate order counts for each category

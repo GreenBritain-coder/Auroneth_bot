@@ -29,19 +29,45 @@ export async function GET() {
       });
     }
 
-    // Attach sales count and ensure rating is formatted
+    // Compute rating from reviews for each bot (dynamic)
+    const reviewsCollection = mongoose.connection.db?.collection('reviews');
+    const ratingByBot: Record<string, { avg: number; count: number }> = {};
+    if (reviewsCollection) {
+      const reviewDocs = await reviewsCollection.find({}).toArray();
+      reviewDocs.forEach((r: Record<string, unknown>) => {
+        const bid = String(r.bot_id ?? '');
+        if (!bid) return;
+        if (!ratingByBot[bid]) ratingByBot[bid] = { avg: 0, count: 0 };
+        ratingByBot[bid].avg += Number(r.rating) || 0;
+        ratingByBot[bid].count += 1;
+      });
+      Object.keys(ratingByBot).forEach((bid) => {
+        const n = ratingByBot[bid].count;
+        if (n > 0) ratingByBot[bid].avg = ratingByBot[bid].avg / n;
+      });
+    }
+
+    // Attach sales count and ensure rating is formatted (dynamic from reviews when available)
     const botsWithStats = bots.map((bot: Record<string, unknown>) => {
       const botId = typeof bot._id === 'string' ? bot._id : (bot._id as { toString?: () => string })?.toString?.() ?? '';
       const sales = orderCounts[botId] ?? 0;
-      let rating = bot.rating;
-      if (rating && typeof rating === 'string' && !rating.endsWith('%')) {
-        rating = `${rating}%`;
+      const computed = ratingByBot[botId];
+      let rating: string | null = null;
+      let rating_count: string | null = null;
+      if (computed && computed.count > 0) {
+        rating = (computed.avg / 5 * 100).toFixed(2);
+        if (rating && !rating.endsWith('%')) rating = `${rating}%`;
+        rating_count = String(computed.count);
+      } else {
+        rating = (bot.rating as string) || null;
+        if (rating && typeof rating === 'string' && !rating.endsWith('%')) rating = `${rating}%`;
+        rating_count = (bot.rating_count as string) || null;
       }
       return {
         ...bot,
         sales,
-        rating: rating || null,
-        rating_count: bot.rating_count || null,
+        rating,
+        rating_count,
       };
     });
 

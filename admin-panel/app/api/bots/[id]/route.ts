@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import mongoose from 'mongoose';
 import connectDB from '../../../../lib/db';
 import { Bot } from '../../../../lib/models';
 import { getTokenFromRequest, verifyToken } from '../../../../lib/auth';
@@ -30,7 +31,28 @@ export async function GET(
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    return NextResponse.json(bot);
+    // For bot-owners: compute rating and rating_count from reviews (dynamic)
+    const botResponse = bot.toObject ? bot.toObject() : { ...bot };
+    if (payload.role !== 'super-admin') {
+      const db = mongoose.connection.db;
+      if (db) {
+        const reviews = db.collection('reviews');
+        const botIdStr = String(params.id);
+        let reviewDocs = await reviews.find({ bot_id: botIdStr }).toArray();
+        if (reviewDocs.length === 0 && /^[a-f0-9]{24}$/i.test(botIdStr)) {
+          reviewDocs = await reviews.find({ bot_id: new mongoose.Types.ObjectId(botIdStr) }).toArray();
+        }
+        if (reviewDocs.length > 0) {
+          const avgRating = reviewDocs.reduce((sum: number, r: any) => sum + (r.rating || 0), 0) / reviewDocs.length;
+          // Convert 1-5 scale to percentage (e.g. 4.5/5 = 90%)
+          const ratingPct = (avgRating / 5 * 100).toFixed(2);
+          (botResponse as any).rating = ratingPct;
+          (botResponse as any).rating_count = String(reviewDocs.length);
+        }
+      }
+    }
+
+    return NextResponse.json(botResponse);
   } catch (error) {
     console.error('Error fetching bot:', error);
     return NextResponse.json(
@@ -77,10 +99,12 @@ export async function PATCH(
       delete data.owner;
     }
     
-    // Only super-admins can modify categories and featured status
+    // Only super-admins can modify categories, featured, and rating fields
     if (payload.role !== 'super-admin') {
       delete data.categories;
       delete data.featured;
+      delete data.rating;
+      delete data.rating_count;
     } else {
       console.log('Super-admin updating - categories:', data.categories, 'featured:', data.featured);
     }

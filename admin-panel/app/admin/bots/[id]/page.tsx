@@ -40,7 +40,6 @@ export default function EditBotPage() {
     rating: '', // Rating percentage
     rating_count: '', // Number of ratings
     vendor_pgp_key: '', // Vendor PGP key
-    webhook_url: '', // Webhook URL for payment callbacks
     payment_methods: ['BTC', 'LTC'] as string[], // Supported payment methods (BTC/LTC only)
   });
   const [updatingProfilePic, setUpdatingProfilePic] = useState(false);
@@ -130,7 +129,6 @@ export default function EditBotPage() {
           rating: botData.rating || '',
           rating_count: botData.rating_count || '',
           vendor_pgp_key: botData.vendor_pgp_key || '',
-          webhook_url: botData.webhook_url || '',
           payment_methods: (botData.payment_methods && Array.isArray(botData.payment_methods) && botData.payment_methods.length > 0) 
             ? botData.payment_methods.filter((m: string) => m === 'BTC' || m === 'LTC') // Only allow BTC/LTC
             : ['BTC', 'LTC'], // Default to both
@@ -289,7 +287,6 @@ export default function EditBotPage() {
         rating: formData.rating || '',
         rating_count: formData.rating_count || '',
         vendor_pgp_key: formData.vendor_pgp_key || '',
-        webhook_url: formData.webhook_url || '',
         payment_methods: formData.payment_methods.filter(m => m === 'BTC' || m === 'LTC'), // Only save BTC/LTC
       };
 
@@ -732,22 +729,32 @@ export default function EditBotPage() {
                 <label className="block text-sm font-medium text-gray-700">Rating (%)</label>
                 <input
                   type="text"
-                  className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
+                  className={`mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 ${userRole !== 'super-admin' ? 'bg-gray-100 cursor-not-allowed' : ''}`}
                   placeholder="96.81"
                   value={formData.rating}
                   onChange={(e) => setFormData({ ...formData, rating: e.target.value })}
+                  disabled={userRole !== 'super-admin'}
+                  readOnly={userRole !== 'super-admin'}
                 />
+                {userRole !== 'super-admin' && (
+                  <p className="mt-1 text-sm text-gray-500">Updates automatically from customer reviews.</p>
+                )}
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-gray-700">Rating Count</label>
                 <input
                   type="text"
-                  className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
+                  className={`mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 ${userRole !== 'super-admin' ? 'bg-gray-100 cursor-not-allowed' : ''}`}
                   placeholder="7707"
                   value={formData.rating_count}
                   onChange={(e) => setFormData({ ...formData, rating_count: e.target.value })}
+                  disabled={userRole !== 'super-admin'}
+                  readOnly={userRole !== 'super-admin'}
                 />
+                {userRole !== 'super-admin' && (
+                  <p className="mt-1 text-sm text-gray-500">Updates automatically from customer reviews.</p>
+                )}
               </div>
 
               <div>
@@ -819,23 +826,6 @@ export default function EditBotPage() {
                 />
                 <p className="mt-1 text-sm text-gray-500">
                   Vendor's public PGP key. This will be displayed in the contact interface for users to verify messages.
-                </p>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700">Webhook URL</label>
-                <input
-                  type="url"
-                  className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
-                  value={formData.webhook_url}
-                  onChange={(e) => setFormData({ ...formData, webhook_url: e.target.value })}
-                  placeholder="https://your-domain.com or http://localhost:8000"
-                />
-                <p className="mt-1 text-sm text-gray-500">
-                  Webhook URL for payment callbacks (CryptAPI). 
-                  <br />For local testing: <code className="bg-gray-100 px-1 rounded">http://localhost:8000</code>
-                  <br />For production: <code className="bg-gray-100 px-1 rounded">https://your-domain.com</code>
-                  <br />For local with callbacks: Use <a href="https://ngrok.com/" target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">ngrok</a> (e.g., <code className="bg-gray-100 px-1 rounded">https://abc123.ngrok.io</code>)
                 </p>
               </div>
 
