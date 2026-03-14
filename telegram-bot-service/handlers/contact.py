@@ -25,7 +25,7 @@ async def handle_contact_command(message: Message, state: FSMContext):
 @router.callback_query(F.data == "contact")
 async def handle_contact_callback(callback: CallbackQuery, state: FSMContext):
     """Handle contact button callback"""
-    print(f"[CONTACT CALLBACK] Button clicked - user: {callback.from_user.id if callback.from_user else 'None'}")
+    print(f"[CONTACT CALLBACK] Button clicked - user: {callback.from_user.id if callback.from_user else 'None'}", flush=True)
     
     try:
         # Handle case where callback.message might be None (old messages)
@@ -44,6 +44,10 @@ async def handle_contact_callback(callback: CallbackQuery, state: FSMContext):
         
         # Verify user exists in database before proceeding (try both string and int _id for compatibility)
         db = get_database()
+        if db is None:
+            print("[CONTACT CALLBACK] ERROR: Database not connected", flush=True)
+            await callback.message.answer("❌ Database not ready. Please try again in a moment.", reply_markup=ReplyKeyboardRemove())
+            return
         users_collection = db.users
         telegram_user_id = str(callback.from_user.id)
         
@@ -68,10 +72,22 @@ async def handle_contact_callback(callback: CallbackQuery, state: FSMContext):
             await safe_answer_callback(callback, "❌ Error opening contact.", show_alert=True)
 
 
+def _escape_markdown(text: str) -> str:
+    """Escape special Markdown characters to prevent parse errors"""
+    if not text:
+        return ""
+    for char in ['_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!']:
+        text = text.replace(char, f'\\{char}')
+    return text
+
+
 async def handle_contact_start(message: Message, state: FSMContext, user_id: str = None):
     """Handle contact button/command - show contact interface"""
     
     db = get_database()
+    if db is None:
+        await message.answer("❌ Database not ready. Please try again in a moment.", reply_markup=ReplyKeyboardRemove())
+        return
     users_collection = db.users
     # Use provided user_id if available, otherwise use message.from_user.id
     telegram_user_id = user_id if user_id else str(message.from_user.id)
@@ -109,11 +125,13 @@ async def handle_contact_start(message: Message, state: FSMContext, user_id: str
         "userId": telegram_user_id
     }).sort("timestamp", -1).limit(20).to_list(length=20)
     
-    # Build contact interface message
+    # Build contact interface message (escape secret_phrase for Markdown - may contain _ * ` etc.)
+    secret_phrase_escaped = _escape_markdown(str(secret_phrase))
+    last_seen_escaped = _escape_markdown(str(last_seen_text))
     contact_message = "💬 *Contact Vendor*\n\n"
     contact_message += "Send messages to the chat. Be sure to check your secret phrase.\n\n"
-    contact_message += f"*Phrase:* `{secret_phrase}`\n"
-    contact_message += f"*Last seen:* {last_seen_text}\n\n"
+    contact_message += f"*Phrase:* `{secret_phrase_escaped}`\n"
+    contact_message += f"*Last seen:* {last_seen_escaped}\n\n"
     contact_message += "This is not a live chat. The seller will reply as soon as he reads your messages.\n\n"
     
     # Show conversation history if available
@@ -126,7 +144,8 @@ async def handle_contact_start(message: Message, state: FSMContext, user_id: str
                 from dateutil import parser
                 msg_date = parser.parse(msg_date)
             date_str = msg_date.strftime("%Y-%m-%d %H:%M") if isinstance(msg_date, datetime) else str(msg_date)
-            contact_message += f"*[{date_str}]*\n{msg.get('message', '')}\n\n"
+            msg_text = _escape_html(str(msg.get('message', '')))
+            contact_message += f"<b>[{_escape_html(date_str)}]</b>\n{msg_text}\n\n"
         contact_message += "───\n\n"
     
     contact_message += "Type your message below:"
@@ -143,7 +162,12 @@ async def handle_contact_start(message: Message, state: FSMContext, user_id: str
     
     keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
     
-    await message.answer(contact_message, parse_mode="Markdown", reply_markup=keyboard)
+    try:
+        await message.answer(contact_message, parse_mode="HTML", reply_markup=keyboard)
+    except Exception as send_err:
+        print(f"[CONTACT] HTML send failed: {send_err}", flush=True)
+        contact_message_plain = contact_message.replace('<b>', '').replace('</b>', '').replace('<code>', '').replace('</code>', '')
+        await message.answer(contact_message_plain, reply_markup=keyboard)
     
     # Set state to wait for message
     await state.set_state(ContactStates.waiting_for_message)
