@@ -1,5 +1,7 @@
+import re
+
 from aiogram import Router, F
-from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardRemove, CallbackQuery
+from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardRemove, CallbackQuery, BufferedInputFile
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -172,6 +174,26 @@ async def handle_contact_start(message: Message, state: FSMContext, user_id: str
     await state.set_state(ContactStates.waiting_for_message)
     await state.update_data(bot_id=str(bot_config["_id"]))
     print(f"[CONTACT] State set - user_id: {telegram_user_id}, bot_id: {str(bot_config['_id'])}")
+
+
+@router.callback_query(F.data == "pgp")
+async def handle_pgp_download(callback: CallbackQuery):
+    """Send vendor PGP key as downloadable .txt file"""
+    await safe_answer_callback(callback)
+    bot_config = await get_bot_config()
+    if not bot_config:
+        await callback.message.answer("❌ Bot configuration not found.")
+        return
+    vendor_pgp_key = bot_config.get("vendor_pgp_key", "")
+    if not vendor_pgp_key:
+        await callback.message.answer("❌ Vendor PGP key not configured.")
+        return
+    bot_name = bot_config.get("name", "Bot")
+    safe_name = re.sub(r'[^\w\-]', '_', bot_name).strip('_') or "bot"
+    filename = f"{safe_name}_auroneth.txt"
+    file_bytes = vendor_pgp_key.encode("utf-8")
+    input_file = BufferedInputFile(file_bytes, filename=filename)
+    await callback.message.answer_document(input_file, caption="Public PGP key")
 
 
 @router.callback_query(F.data == "contact_pgp_key")

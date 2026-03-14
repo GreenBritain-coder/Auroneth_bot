@@ -443,10 +443,18 @@ async def handle_menu_callback(callback: CallbackQuery):
         InlineKeyboardButton(text="❤️ Wishlist", callback_data="view_wishlist"),
         InlineKeyboardButton(text=f"🛒 {cart_display}", callback_data="view_cart"),
     ])
-    inline_keyboard_buttons.append([
-        InlineKeyboardButton(text="💬 Contact", callback_data="contact"),
-        InlineKeyboardButton(text="ℹ️ About", callback_data="about"),
-    ])
+    vendor_pgp_key = bot_config.get("vendor_pgp_key", "")
+    if vendor_pgp_key:
+        inline_keyboard_buttons.append([
+            InlineKeyboardButton(text="💬 Contact", callback_data="contact"),
+            InlineKeyboardButton(text="🔐 PGP", callback_data="pgp"),
+            InlineKeyboardButton(text="ℹ️ About", callback_data="about"),
+        ])
+    else:
+        inline_keyboard_buttons.append([
+            InlineKeyboardButton(text="💬 Contact", callback_data="contact"),
+            InlineKeyboardButton(text="ℹ️ About", callback_data="about"),
+        ])
     
     # Edit the message to show menu directly
     if inline_keyboard_buttons:
@@ -582,10 +590,18 @@ async def cmd_menu(message: Message):
         InlineKeyboardButton(text="❤️ Wishlist", callback_data="view_wishlist"),
         InlineKeyboardButton(text=f"🛒 {cart_display}", callback_data="view_cart"),
     ])
-    inline_keyboard_buttons.append([
-        InlineKeyboardButton(text="💬 Contact", callback_data="contact"),
-        InlineKeyboardButton(text="ℹ️ About", callback_data="about"),
-    ])
+    vendor_pgp_key = bot_config.get("vendor_pgp_key", "")
+    if vendor_pgp_key:
+        inline_keyboard_buttons.append([
+            InlineKeyboardButton(text="💬 Contact", callback_data="contact"),
+            InlineKeyboardButton(text="🔐 PGP", callback_data="pgp"),
+            InlineKeyboardButton(text="ℹ️ About", callback_data="about"),
+        ])
+    else:
+        inline_keyboard_buttons.append([
+            InlineKeyboardButton(text="💬 Contact", callback_data="contact"),
+            InlineKeyboardButton(text="ℹ️ About", callback_data="about"),
+        ])
     
     # Show inline menu
     if inline_keyboard_buttons:
