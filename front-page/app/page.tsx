@@ -134,15 +134,18 @@ export default function Home() {
       {/* Header Bar */}
       <header className="bg-gray-800/80 border-b border-gray-700 shadow-sm backdrop-blur-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            <Image
-              src="/logo.png"
-              alt="Auroneth Marketplace"
-              width={220}
-              height={48}
-              className="h-10 w-auto object-contain"
-              priority
-            />
+          <div className="flex items-center justify-between h-20">
+            <div className="flex items-center gap-3">
+              <Image
+                src="/logo.png"
+                alt="Auroneth Marketplace"
+                width={80}
+                height={80}
+                className="h-16 w-auto object-contain"
+                priority
+              />
+              <span className="text-xl font-bold text-white">Auroneth Marketplace</span>
+            </div>
           </div>
         </div>
       </header>
