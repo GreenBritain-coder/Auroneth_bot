@@ -1,5 +1,8 @@
 FROM python:3.12-slim
 
+# Ensure logs appear immediately (no buffering)
+ENV PYTHONUNBUFFERED=1
+
 WORKDIR /app
 
 # Install dependencies

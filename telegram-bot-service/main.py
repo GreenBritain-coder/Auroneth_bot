@@ -1,6 +1,10 @@
 import asyncio
 import os
 import sys
+
+# Log immediately so Coolify shows startup
+print("Starting telegram-bot-service...", flush=True)
+
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode

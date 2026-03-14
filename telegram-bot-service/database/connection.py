@@ -12,9 +12,14 @@ db = None
 async def connect_to_mongo():
     """Initialize MongoDB connection"""
     global client, db
-    client = AsyncIOMotorClient(MONGO_URI)
-    db = client.get_database()
-    print("Connected to MongoDB")
+    print("Connecting to MongoDB...", flush=True)
+    try:
+        client = AsyncIOMotorClient(MONGO_URI)
+        db = client.get_database()
+        print("Connected to MongoDB", flush=True)
+    except Exception as e:
+        print(f"MongoDB connection failed: {e}", flush=True)
+        raise
 
 
 async def close_mongo_connection():
