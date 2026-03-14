@@ -1,18 +1,16 @@
-# Build from repo root: docker build -f front-page/Dockerfile .
-# Or from front-page dir: docker build -f Dockerfile ..  (context = parent, then COPY front-page/ not used)
+# Expects build context = front-page folder (Coolify: Base Directory = front-page, Dockerfile Path = Dockerfile)
 FROM node:20-alpine AS base
 
 FROM base AS deps
 RUN apk add --no-cache libc6-compat
 WORKDIR /app
-# Support both: context = repo root (COPY front-page/...) or context = front-page (COPY . ...)
-COPY front-page/package.json front-page/package-lock.json* ./
+COPY package.json package-lock.json* ./
 RUN npm ci
 
 FROM base AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
-COPY front-page/ .
+COPY . .
 
 ENV NEXT_TELEMETRY_DISABLED=1
 

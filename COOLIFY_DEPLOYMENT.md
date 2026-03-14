@@ -24,7 +24,7 @@ This guide explains how to deploy to **Coolify** using the domain **test.greenbr
 3. **Source:** GitHub → connect repo `GreenBritain-coder/Auroneth_bot`, branch `main`.
 4. **Build:**
    - **Build Pack:** Dockerfile.
-   - **Base Directory:** leave **empty** (build from repo root). **Dockerfile Path:** `front-page/Dockerfile`.
+   - **Base Directory:** `front-page`. **Dockerfile Path:** `Dockerfile` (relative to base).
    - If your Coolify expects “root directory” for the app: set **Base Directory** to `front-page` so the build context is that folder.
 5. **Ports:** Expose port **3000** (Dockerfile exposes 3000).
 6. **Environment Variables:** Add:
