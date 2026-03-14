@@ -48,3 +48,37 @@ async def get_bot_config_cached():
     # For now, just return fresh data (can add caching later if needed)
     return await get_bot_config()
 
+
+async def ensure_bot_registered():
+    """
+    If no bot exists for BOT_TOKEN, auto-create a minimal bot record.
+    Allows the bot to start when admin panel uses a different database.
+    """
+    bot_config = await get_bot_config()
+    if bot_config:
+        return bot_config
+
+    bot_token = get_bot_token()
+    db = get_database()
+    if not bot_token or not db:
+        return None
+
+    bots_collection = db.bots
+    from bson import ObjectId
+    new_bot = {
+        "_id": ObjectId(),
+        "token": bot_token.strip(),
+        "name": "Bot",
+        "description": "",
+        "main_buttons": [],
+        "inline_buttons": {},
+        "products": [],
+        "status": "live",
+        "public_listing": True,
+        "payment_methods": ["BTC", "LTC"],
+    }
+    await bots_collection.insert_one(new_bot)
+    new_bot["_id"] = str(new_bot["_id"])
+    print("Auto-registered bot in database (was not found)", flush=True)
+    return new_bot
+

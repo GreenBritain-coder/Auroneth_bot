@@ -13,7 +13,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from aiohttp import web
 from dotenv import load_dotenv
 from database.connection import connect_to_mongo, close_mongo_connection
-from utils.bot_config import get_bot_config
+from utils.bot_config import get_bot_config, ensure_bot_registered
 from handlers import start, menu, products, payments, shop, orders, menu_inline, payouts, contact
 
 # Configure stdout for UTF-8 to handle emojis on Windows
@@ -97,8 +97,8 @@ async def on_startup(bot: Bot):
     """Initialize on startup"""
     await connect_to_mongo()
     
-    # Verify bot token matches a bot in database
-    bot_config = await get_bot_config()
+    # Get or auto-create bot config in database
+    bot_config = await ensure_bot_registered()
     if not bot_config:
         print("=" * 60)
         print("⚠️  WARNING: Bot configuration not found in database!")
@@ -266,7 +266,7 @@ async def main():
     # Run polling in background task
     async def polling_task():
         try:
-            # Verify bot config before starting polling
+            # Get bot config (already ensured in on_startup)
             bot_config = await get_bot_config()
             if not bot_config:
                 print("\n" + "=" * 60)
