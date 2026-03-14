@@ -167,6 +167,8 @@ async def show_user_orders(message_or_callback: Union[Message, CallbackQuery]):
     # Build message with all orders
     orders_text = "📦 *Your Orders*\n\n"
     
+    invoices_collection = db.invoices
+    
     # Group orders by status for counts (need to check expiry for pending)
     paid_orders = [o for o in orders if o.get("paymentStatus") == "paid"]
     pending_orders = [o for o in orders if o.get("paymentStatus") == "pending"]
@@ -196,8 +198,6 @@ async def show_user_orders(message_or_callback: Union[Message, CallbackQuery]):
     
     # Create inline buttons for each order
     keyboard_buttons = []
-    
-    invoices_collection = db.invoices
     
     for order in orders[:10]:  # Show first 10 orders
         product = await get_product_info(products_collection, order.get("productId"))
