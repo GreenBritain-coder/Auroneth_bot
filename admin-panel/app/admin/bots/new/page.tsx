@@ -16,7 +16,7 @@ export default function NewBotPage() {
     description: '',
     status: 'live',
     public_listing: true,
-    main_buttons: 'Shop, Support, Promotions, Orders',
+    main_buttons: '🛒 Shop, ⭐ Discounts, 💎 Promotions, 📦 Orders',
     welcome_message: '',
     thank_you_message: '',
     profile_picture_url: '',
@@ -178,7 +178,7 @@ export default function NewBotPage() {
             <input
               type="text"
               className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
-              placeholder="Shop, Support, Promotions"
+              placeholder="🛒 Shop, ⭐ Discounts, 💎 Promotions, 📦 Orders"
               value={formData.main_buttons}
               onChange={(e) => setFormData({ ...formData, main_buttons: e.target.value })}
             />
