@@ -2148,8 +2148,9 @@ async def handle_checkout(callback: CallbackQuery):
         [InlineKeyboardButton(text="📍 Enter Delivery Address", callback_data=f"addr:{invoice_id}")],
         [InlineKeyboardButton(text="🚚 Select Delivery Method", callback_data=f"del:{invoice_id}")],
         [
-            InlineKeyboardButton(text="🗑️ Delete Order", callback_data=f"del_inv:{invoice_id}"),
-            InlineKeyboardButton(text="⬅️ Back to Orders", callback_data="orders")
+            InlineKeyboardButton(text="🗑️ Delete", callback_data=f"del_inv:{invoice_id}"),
+            InlineKeyboardButton(text="⬅️ Orders", callback_data="orders"),
+            InlineKeyboardButton(text="📋 Menu", callback_data="menu")
         ]
     ]
     
@@ -2342,14 +2343,11 @@ async def show_checkout_invoice(invoice_id: str, callback: CallbackQuery):
         # Show view order button if paid - use order: callback which handles order details
         keyboard_buttons.append([InlineKeyboardButton(text="✅ Payment Completed - View Order", callback_data=f"order:{short_invoice_id}")])
     
-    # Back button should go to orders list if paid, or orders if pending (cart is empty after checkout)
-    # For pending invoices, cart is empty because items were moved to invoice, so go to orders instead
-    back_callback = "orders"
-    back_text = "⬅️ Back to Orders"
-    
+    # Back buttons: Delete, Orders list, Main menu
     keyboard_buttons.append([
-        InlineKeyboardButton(text="🗑️ Delete Order", callback_data=f"del_inv:{short_invoice_id}"),
-        InlineKeyboardButton(text=back_text, callback_data=back_callback)
+        InlineKeyboardButton(text="🗑️ Delete", callback_data=f"del_inv:{short_invoice_id}"),
+        InlineKeyboardButton(text="⬅️ Orders", callback_data="orders"),
+        InlineKeyboardButton(text="📋 Menu", callback_data="menu")
     ])
     
     keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
