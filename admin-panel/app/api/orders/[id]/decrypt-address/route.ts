@@ -144,12 +144,8 @@ export async function POST(
           
           return NextResponse.json({ 
             error: 'Decryption failed: The encryption key does not match. ' +
-                   'This order was encrypted with a different ADDRESS_ENCRYPTION_KEY than the one currently configured. ' +
-                   'Possible causes:\n' +
-                   '1. The order was created before ADDRESS_ENCRYPTION_KEY was set in the bot service\n' +
-                   '2. The ADDRESS_ENCRYPTION_KEY in admin-panel/.env.local does not match telegram-bot-service/.env\n' +
-                   '3. The admin panel server needs to be restarted to pick up the new environment variable\n\n' +
-                   'Note: Orders encrypted before ADDRESS_ENCRYPTION_KEY was set cannot be decrypted.',
+                   'ADDRESS_ENCRYPTION_KEY must be identical in Coolify admin-panel and telegram-bot-service.\n\n' +
+                   'Fix: Set the same key in both apps (Configuration → Environment Variables), then redeploy both.',
             errorCode: 'ENCRYPTION_KEY_MISMATCH'
           }, { status: 400 });
         }

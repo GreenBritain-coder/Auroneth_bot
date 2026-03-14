@@ -8,7 +8,7 @@ from typing import Union
 from database.connection import get_database
 from utils.bot_config import get_bot_config
 from utils.callback_utils import safe_answer_callback
-from datetime import datetime
+from datetime import datetime, timedelta
 
 router = Router()
 
@@ -167,12 +167,31 @@ async def show_user_orders(message_or_callback: Union[Message, CallbackQuery]):
     # Build message with all orders
     orders_text = "📦 *Your Orders*\n\n"
     
-    # Group orders by status for counts
-    pending_orders = [o for o in orders if o.get("paymentStatus") == "pending"]
+    # Group orders by status for counts (need to check expiry for pending)
     paid_orders = [o for o in orders if o.get("paymentStatus") == "paid"]
+    pending_orders = [o for o in orders if o.get("paymentStatus") == "pending"]
+    failed_orders = [o for o in orders if o.get("paymentStatus") in ["failed", "cancelled"]]
+    # Count expired among pending (payment_deadline passed)
+    expired_count = 0
+    for o in pending_orders:
+        inv = await invoices_collection.find_one({"invoice_id": str(o.get("_id", ""))})
+        if not inv:
+            inv = await invoices_collection.find_one({"_id": str(o.get("_id", ""))})
+        if inv and inv.get("payment_deadline"):
+            try:
+                pd = inv["payment_deadline"]
+                if isinstance(pd, str):
+                    from dateutil import parser
+                    pd = parser.parse(pd)
+                if pd and datetime.utcnow() > pd:
+                    expired_count += 1
+            except Exception:
+                pass
     
     orders_text += f"⏳ *Pending Payments:* {len(pending_orders)}\n"
     orders_text += f"✅ *Completed:* {len(paid_orders)}\n"
+    if expired_count > 0 or failed_orders:
+        orders_text += f"🚫 *Expired/Cancelled:* {expired_count + len(failed_orders)}\n"
     orders_text += f"*Total Orders:* {len(orders)}\n\n"
     
     # Create inline buttons for each order
@@ -196,6 +215,7 @@ async def show_user_orders(message_or_callback: Union[Message, CallbackQuery]):
         
         # Check if order has notes (via invoice)
         has_notes = False
+        is_expired = False
         order_id_str = str(order.get('_id', ''))
         invoice = await invoices_collection.find_one({"invoice_id": order_id_str})
         if not invoice:
@@ -203,10 +223,32 @@ async def show_user_orders(message_or_callback: Union[Message, CallbackQuery]):
             invoice = await invoices_collection.find_one({"_id": order_id_str})
         if invoice and invoice.get("notes"):
             has_notes = True
+        # Check if pending order is expired (payment_deadline passed)
+        if invoice and payment_status == "pending":
+            payment_deadline = invoice.get("payment_deadline")
+            if payment_deadline:
+                try:
+                    if isinstance(payment_deadline, str):
+                        try:
+                            from dateutil import parser
+                            payment_deadline = parser.parse(payment_deadline)
+                        except Exception:
+                            try:
+                                payment_deadline = datetime.strptime(payment_deadline, "%Y-%m-%d %H:%M:%S")
+                            except Exception:
+                                payment_deadline = None
+                    if payment_deadline and datetime.utcnow() > payment_deadline:
+                        is_expired = True
+                except Exception:
+                    pass
         
         # Determine emoji based on status
         if payment_status == "paid":
             emoji = "✅"  # Tick for completed
+        elif payment_status in ["failed", "cancelled"]:
+            emoji = "🚫"  # No entry for cancelled/failed
+        elif is_expired:
+            emoji = "🚫"  # No entry for expired
         elif payment_status == "pending":
             emoji = "⏰"  # Clock for pending payment
         else:
@@ -449,8 +491,32 @@ async def handle_order_detail(callback: CallbackQuery):
         if order_found and order_found.get("paymentStatus", "").lower() == "paid":
             is_paid = True
         
-        # Show payment invoice if payment has been set up (has address) or is already paid
-        if has_payment_address or is_paid:
+        # Check if order is expired or cancelled (not paid + deadline passed or failed status)
+        is_expired_or_cancelled = False
+        if not is_paid:
+            payment_status = order_found.get("paymentStatus", "pending") if order_found else "pending"
+            if payment_status.lower() in ["failed", "cancelled"]:
+                is_expired_or_cancelled = True
+            else:
+                payment_deadline = invoice.get("payment_deadline")
+                if payment_deadline:
+                    if isinstance(payment_deadline, str):
+                        try:
+                            from dateutil import parser
+                            payment_deadline = parser.parse(payment_deadline)
+                        except Exception:
+                            try:
+                                payment_deadline = datetime.strptime(payment_deadline, "%Y-%m-%d %H:%M:%S")
+                            except Exception:
+                                payment_deadline = None
+                    if payment_deadline and datetime.utcnow() > payment_deadline:
+                        is_expired_or_cancelled = True
+        
+        # Show cancelled format for expired/cancelled orders
+        if is_expired_or_cancelled:
+            from handlers.shop import show_cancelled_order_invoice
+            await show_cancelled_order_invoice(invoice_id, callback)
+        elif has_payment_address or is_paid:
             # Import and call show_payment_invoice from shop handler
             from handlers.shop import show_payment_invoice
             await show_payment_invoice(invoice_id, callback)

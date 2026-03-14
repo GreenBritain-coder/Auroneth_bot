@@ -2995,6 +2995,97 @@ async def show_payment_invoice(invoice_id: str, callback: CallbackQuery | Messag
         await message.answer(invoice_text, parse_mode="Markdown", reply_markup=keyboard)
 
 
+async def show_cancelled_order_invoice(invoice_id: str, callback: CallbackQuery | Message):
+    """Show cancelled/expired order details - read-only view with contact seller message"""
+    db = get_database()
+    invoices_collection = db.invoices
+    products_collection = db.products
+
+    if hasattr(callback, 'message'):
+        message = callback.message
+    else:
+        message = callback
+
+    invoice = await invoices_collection.find_one({"invoice_id": invoice_id})
+    if not invoice:
+        invoice = await invoices_collection.find_one({"_id": invoice_id})
+    if not invoice:
+        await message.answer("❌ Invoice not found.")
+        return
+
+    display_invoice_id = invoice.get("invoice_id", invoice_id)
+    currency = invoice.get("currency", "GBP")
+    currency_symbol = "£" if currency.upper() == "GBP" else f"{currency} "
+
+    # Build cancelled order message
+    cancelled_text = f"💳 *Invoice {display_invoice_id}*\n\n"
+    cancelled_text += "Payment for the order has been cancelled. "
+    cancelled_text += "If you have sent the coins but the order is still cancelled, "
+    cancelled_text += "contact the seller with the order number and proof of payment.\n\n"
+
+    # Items list - format: "1. Product Name quantity — £price"
+    from bson import ObjectId
+    for idx, item in enumerate(invoice.get("items", []), 1):
+        product = None
+        product_id = item.get("product_id")
+        try:
+            if product_id and len(str(product_id)) == 24:
+                product = await products_collection.find_one({"_id": ObjectId(product_id)})
+        except Exception:
+            pass
+        if not product:
+            product = await products_collection.find_one({"_id": product_id})
+        if not product:
+            all_products = await products_collection.find({}).to_list(length=100)
+            for p in all_products:
+                if str(p.get("_id")) == str(product_id):
+                    product = p
+                    break
+
+        product_name = product.get("name", "Unknown Product") if product else "Unknown Product"
+        if item.get("variation_index") is not None and product:
+            variations = product.get("variations", [])
+            if item["variation_index"] < len(variations):
+                product_name += f" - {variations[item['variation_index']]['name']}"
+
+        quantity = item.get("quantity", 1)
+        price = item.get("price", 0)
+        line_total = price * quantity
+        if currency.upper() == "GBP":
+            cancelled_text += f"{idx}. {product_name} {quantity:.2f} — £{line_total:.2f}\n"
+        else:
+            cancelled_text += f"{idx}. {product_name} {quantity:.2f} — {currency_symbol}{line_total:.2f}\n"
+
+    # Discount
+    discount_amount = invoice.get("discount_amount", 0)
+    if discount_amount > 0:
+        if currency.upper() == "GBP":
+            cancelled_text += f"\n*Discount:* -£{discount_amount:.2f}\n"
+        else:
+            cancelled_text += f"\n*Discount:* -{currency_symbol}{discount_amount:.2f}\n"
+
+    # Delivery
+    if invoice.get("delivery_method"):
+        cancelled_text += f"*Delivery:* {invoice['delivery_method']}\n"
+
+    # Total
+    total = invoice.get("total", 0)
+    final_total = total - discount_amount
+    if currency.upper() == "GBP":
+        cancelled_text += f"*Total:* £{final_total:.2f}\n"
+    else:
+        cancelled_text += f"*Total:* {currency_symbol}{final_total:.2f}\n"
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="⬅️ Back to Orders", callback_data="orders")]
+    ])
+
+    try:
+        await message.edit_text(cancelled_text, parse_mode="Markdown", reply_markup=keyboard)
+    except Exception:
+        await message.answer(cancelled_text, parse_mode="Markdown", reply_markup=keyboard)
+
+
 @router.callback_query(F.data.startswith("notes:"))
 async def handle_add_notes(callback: CallbackQuery):
     """Handle add notes button - allow user to add/edit notes for their order"""

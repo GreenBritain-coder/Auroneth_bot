@@ -22,6 +22,27 @@ This guide explains how to deploy to **Coolify** using the domain **test.greenbr
   - **https://admin.test.greenbritain.club** and **https://bot.test.greenbritain.club** will 404 until you deploy the **admin-panel** and **telegram-bot-service** apps and assign those domains to them.
 - **If the main domain (test.greenbritain.club) still 404s:** In Coolify → your front-page app → **Configuration** → **Domains**: ensure `test.greenbritain.club` is added and saved, then redeploy. Check **Deployments** / **Logs** to confirm the container started and is listening on port 3000.
 
+### "Decryption failed: The encryption key does not match"
+
+This happens when `ADDRESS_ENCRYPTION_KEY` differs between **telegram-bot-service** (encrypts) and **admin-panel** (decrypts). They must be **identical**.
+
+**Fix in Coolify:**
+1. Pick one key (e.g. your local key from `telegram-bot-service/.env`).
+2. Set it in **both** apps:
+   - **admin-panel** → Configuration → Environment Variables → `ADDRESS_ENCRYPTION_KEY`
+   - **telegram-bot-service** → Configuration → Environment Variables → `ADDRESS_ENCRYPTION_KEY`
+3. Use the **exact same value** in both (including any trailing `=`).
+4. **Redeploy** both apps after changing env vars.
+
+Example (use your actual key):
+```
+ADDRESS_ENCRYPTION_KEY=pPELJJX8LjZwWK-FVmIyb8j4sLlh5BvCr3Yf9WaA088=
+```
+
+**Note:** Orders encrypted with the old key cannot be decrypted after you change keys.
+
+---
+
 ### "No available server" (proxy error)
 
 This message comes from **Coolify’s reverse proxy**, not from the app. It means the proxy has a route for your domain but **no running container** to send traffic to.
