@@ -30,11 +30,19 @@ export default function EditCategoryPage() {
       const response = await fetch(`/api/categories/${categoryId}`);
       if (response.ok) {
         const data = await response.json();
+        let botIds = data.bot_ids || [];
+        if (botIds.length === 0) {
+          const botsRes = await fetch('/api/bots');
+          if (botsRes.ok) {
+            const botsData = await botsRes.json();
+            if (botsData?.length > 0) botIds = botsData.map((b: any) => b._id);
+          }
+        }
         setFormData({
           name: data.name || '',
           description: data.description || '',
           order: data.order || 0,
-          bot_ids: data.bot_ids || [],
+          bot_ids: botIds,
         });
       } else {
         setError('Failed to load category');

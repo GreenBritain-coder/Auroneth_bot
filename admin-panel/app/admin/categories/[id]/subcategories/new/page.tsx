@@ -31,8 +31,15 @@ export default function NewSubcategoryPage() {
       if (response.ok) {
         const data = await response.json();
         setCategory(data);
-        // Pre-select bots that are assigned to the category
-        setFormData(prev => ({ ...prev, bot_ids: data.bot_ids || [] }));
+        let botIds = data.bot_ids || [];
+        if (botIds.length === 0) {
+          const botsRes = await fetch('/api/bots');
+          if (botsRes.ok) {
+            const botsData = await botsRes.json();
+            if (botsData?.length > 0) botIds = botsData.map((b: any) => b._id);
+          }
+        }
+        setFormData(prev => ({ ...prev, bot_ids: botIds }));
       }
     } catch (err) {
       console.error('Failed to fetch category:', err);

@@ -522,21 +522,55 @@ async def handle_category(callback: CallbackQuery):
     db = get_database()
     subcategories_collection = db.subcategories
     
-    # Get subcategories for this category and bot
+    from bson import ObjectId
+
+    # Build subcategory query - support both string and ObjectId for category_id and bot_ids
+    def _match_category_id(cid):
+        try:
+            if cid and len(str(cid)) == 24:
+                return {"$in": [cid, ObjectId(cid)]}
+            return cid
+        except Exception:
+            return cid
+
+    def _match_bot_ids(bid):
+        try:
+            if bid and len(str(bid)) == 24:
+                return {"$in": [bid, ObjectId(bid)]}
+            return bid
+        except Exception:
+            return bid
+
     subcategories = await subcategories_collection.find({
-        "category_id": category_id,
-        "bot_ids": bot_id
+        "category_id": _match_category_id(category_id),
+        "bot_ids": _match_bot_ids(bot_id)
     }).sort("order", 1).to_list(length=50)
-    
-    # If no subcategories, show products directly under this category (products with category_id)
+
+    # If no subcategories, show products directly under this category
+    # Products can have category_id (direct) or subcategory_id (subcategory under this category)
     if not subcategories:
         products_collection = db.products
+        # Get subcategory IDs for this category (without bot filter) for fallback
+        all_subcats = await subcategories_collection.find({
+            "category_id": _match_category_id(category_id)
+        }).to_list(length=100)
+        subcat_ids = []
+        for s in all_subcats:
+            sid = s["_id"]
+            subcat_ids.append(sid)
+            subcat_ids.append(str(sid))
+
+        or_conditions = [{"category_id": _match_category_id(category_id)}]
+        if subcat_ids:
+            or_conditions.append({"subcategory_id": {"$in": subcat_ids}})
+
         products = await products_collection.find({
-            "category_id": category_id,
-            "bot_ids": bot_id
+            "$and": [
+                {"bot_ids": _match_bot_ids(bot_id)},
+                {"$or": or_conditions}
+            ]
         }).to_list(length=50)
         if products:
-            from bson import ObjectId
             try:
                 category = await db.categories.find_one({"_id": ObjectId(category_id)})
             except Exception:

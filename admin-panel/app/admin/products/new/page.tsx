@@ -56,6 +56,10 @@ export default function NewProductPage() {
       if (response.ok) {
         const data = await response.json();
         setBots(data);
+        // Default: check all bots
+        if (data?.length > 0) {
+          setFormData(prev => ({ ...prev, bot_ids: data.map((b: any) => b._id) }));
+        }
       }
     } catch (err) {
       console.error('Error fetching bots:', err);

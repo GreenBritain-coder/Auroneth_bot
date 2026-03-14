@@ -25,6 +25,10 @@ export default function NewCategoryPage() {
       if (response.ok) {
         const data = await response.json();
         setBots(data);
+        // Default: check all bots
+        if (data && data.length > 0) {
+          setFormData(prev => ({ ...prev, bot_ids: data.map((b: any) => b._id) }));
+        }
       }
     } catch (err) {
       console.error('Failed to fetch bots:', err);

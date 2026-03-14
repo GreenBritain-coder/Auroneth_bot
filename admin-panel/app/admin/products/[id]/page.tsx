@@ -56,6 +56,13 @@ export default function EditProductPage() {
     }
   }, [formData.subcategory_id]);
 
+  useEffect(() => {
+    // Default: if bot_ids empty and bots loaded, check all bots
+    if (!loading && bots.length > 0 && formData.bot_ids.length === 0) {
+      setFormData(prev => ({ ...prev, bot_ids: bots.map(b => b._id) }));
+    }
+  }, [loading, bots, formData.bot_ids.length]);
+
   const fetchBots = async () => {
     try {
       const response = await fetch('/api/bots');
