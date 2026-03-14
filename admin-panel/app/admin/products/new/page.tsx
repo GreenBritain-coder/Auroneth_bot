@@ -33,6 +33,7 @@ export default function NewProductPage() {
 
   useEffect(() => {
     fetchBots();
+    fetchCategories();
     fetchSubcategories();
   }, []);
 
