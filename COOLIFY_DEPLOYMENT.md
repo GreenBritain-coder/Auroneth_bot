@@ -15,6 +15,22 @@ This guide explains how to deploy to **Coolify** using the domain **test.greenbr
 - Create **one bot** in Telegram via @BotFather and copy the token (you’ll add it to the bot service later).
 - Decide a **JWT secret** for the admin panel (long random string) and an **address encryption key** (base64). Generate encryption key: `telegram-bot-service/scripts/generate_encryption_key.py` or any base64-encoded 32-byte value.
 
+### 404 "Page not found"?
+
+- **If you only deployed the front-page:**  
+  - **https://test.greenbritain.club** should show the public bot listing. If you see 404 there, check in Coolify that the domain `test.greenbritain.club` is assigned to the **front-page** application and that the deployment is running (not Exited).
+  - **https://admin.test.greenbritain.club** and **https://bot.test.greenbritain.club** will 404 until you deploy the **admin-panel** and **telegram-bot-service** apps and assign those domains to them.
+- **If the main domain (test.greenbritain.club) still 404s:** In Coolify → your front-page app → **Configuration** → **Domains**: ensure `test.greenbritain.club` is added and saved, then redeploy. Check **Deployments** / **Logs** to confirm the container started and is listening on port 3000.
+
+### "No available server" (proxy error)
+
+This message comes from **Coolify’s reverse proxy**, not from the app. It means the proxy has a route for your domain but **no running container** to send traffic to.
+
+1. **Check container status** — Coolify → your app (e.g. front-page) → **Deployments** or **Logs**. If the container is **Exited** or **Restarting**, the proxy will show "no available server".
+2. **Fix an Exited container** — Open **Logs** to see why it stopped (e.g. missing `MONGO_URI`, crash on startup). In **Configuration** → **Environment Variables**, set at least `MONGO_URI` (and `NODE_ENV=production` if needed). Save, then click **Deploy** to redeploy.
+3. **Check port** — The front-page Dockerfile exposes **3000**. In the app’s Coolify configuration, **Ports Exposes** (or Port) must be **3000** so the proxy forwards correctly.
+4. **Redeploy** — After changing env or port, click **Deploy** and wait until the new container is **Running**, then reload the site.
+
 ---
 
 ### 1. Front Page (test.greenbritain.club)

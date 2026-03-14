@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import connectDB from '@/lib/db';
-import { Order, User } from '@/lib/models';
-import { getTokenFromRequest, verifyToken } from '@/lib/auth';
+import connectDB from '../../../../lib/db';
+import { Order, User } from '../../../../lib/models';
+import { getTokenFromRequest, verifyToken } from '../../../../lib/auth';
 
 /**
  * API endpoint to decrypt order address
@@ -48,7 +48,7 @@ export async function POST(
 
     // Check permissions - bot owners can only decrypt their own bot's orders
     if (payload.role !== 'super-admin') {
-      const { Bot } = await import('@/lib/models');
+      const { Bot } = await import('../../../../lib/models');
       const userBots = await Bot.find({ owner: payload.userId });
       const userBotIds = userBots.map(b => b._id.toString());
       
@@ -98,7 +98,7 @@ export async function POST(
     }
 
     // Decrypt address using the decryption utility
-    const { decryptAddress } = await import('@/lib/address_decryption');
+    const { decryptAddress } = await import('../../../../lib/address_decryption');
     
     console.log('Attempting to decrypt address for order:', orderId);
     console.log('User ID:', userId);

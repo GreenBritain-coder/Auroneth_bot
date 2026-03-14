@@ -1,4 +1,4 @@
-import { CommissionPayout } from '@/lib/models';
+import { CommissionPayout } from './models';
 import type { Document } from 'mongoose';
 
 export interface ProcessPayoutResult {

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import connectDB from '@/lib/db';
-import { CommissionPayout } from '@/lib/models';
-import { getTokenFromRequest, verifyToken } from '@/lib/auth';
+import connectDB from '../../../../lib/db';
+import { CommissionPayout } from '../../../../lib/models';
+import { getTokenFromRequest, verifyToken } from '../../../../lib/auth';
 
 // PATCH: Update payout status (super-admin only)
 export async function PATCH(

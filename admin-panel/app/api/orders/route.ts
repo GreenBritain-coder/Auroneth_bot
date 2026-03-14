@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import connectDB from '@/lib/db';
-import { Order } from '@/lib/models';
-import { getTokenFromRequest, verifyToken } from '@/lib/auth';
+import connectDB from '../../lib/db';
+import { Order } from '../../lib/models';
+import { getTokenFromRequest, verifyToken } from '../../lib/auth';
 import mongoose from 'mongoose';
 
 export async function GET(request: NextRequest) {
@@ -24,7 +24,7 @@ export async function GET(request: NextRequest) {
       orders = await Order.find({}).sort({ timestamp: -1 }).lean();
     } else {
       // Get user's bots
-      const { Bot } = await import('@/lib/models');
+      const { Bot } = await import('../../lib/models');
       const userBots = await Bot.find({ owner: payload.userId });
       const userBotIds = userBots.map(b => b._id.toString());
       
@@ -61,7 +61,7 @@ export async function GET(request: NextRequest) {
     });
     
     // Fetch bot names for all unique botIds
-    const { Bot } = await import('@/lib/models');
+    const { Bot } = await import('../../lib/models');
     const uniqueBotIds = [...new Set(orders.map(o => {
       const botId = o.botId;
       return typeof botId === 'string' ? botId : botId.toString();
