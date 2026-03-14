@@ -403,20 +403,10 @@ async def handle_menu_callback(callback: CallbackQuery):
     main_buttons = bot_config.get("main_buttons", [])
     main_buttons = [btn for btn in main_buttons if btn and btn.strip()] if isinstance(main_buttons, list) else []
     
-    # Build list of available commands
     import re
-    commands_list = ["/start", "/menu", "/wishlist", "/contact", "/reviews", "/about"]
-    for button in main_buttons:
-        if isinstance(button, str) and button.strip():
-            button_clean = re.sub(r'[^\w\s]', '', button)
-            command = re.sub(r'\s+', '_', button_clean.lower().strip())
-            if command not in ["start", "menu", "wishlist", "contact", "about"]:
-                commands_list.append(f"/{command}")
     
-    # Build menu text with commands
-    menu_text = "📋 *Main Menu*\n\n"
-    menu_text += "🔘 *Tap buttons below or type commands:*\n"
-    menu_text += "\n".join([f"• {cmd}" for cmd in commands_list])
+    # Build menu text
+    menu_text = "📋 *Main Menu*"
     
     # Create inline keyboard - Reviews first, then main_buttons, Orders/Wishlist/Cart and Contact/About at bottom
     inline_keyboard_buttons = []
@@ -552,20 +542,10 @@ async def cmd_menu(message: Message):
     main_buttons = bot_config.get("main_buttons", [])
     main_buttons = [btn for btn in main_buttons if btn and btn.strip()] if isinstance(main_buttons, list) else []
     
-    # Build list of available commands
     import re
-    commands_list = ["/start", "/menu", "/wishlist", "/contact", "/reviews", "/about"]
-    for button in main_buttons:
-        if isinstance(button, str) and button.strip():
-            button_clean = re.sub(r'[^\w\s]', '', button)
-            command = re.sub(r'\s+', '_', button_clean.lower().strip())
-            if command not in ["start", "menu", "wishlist", "contact", "about"]:
-                commands_list.append(f"/{command}")
     
-    # Build menu text with commands
-    menu_text = "📋 *Main Menu*\n\n"
-    menu_text += "🔘 *Tap buttons below or type commands:*\n"
-    menu_text += "\n".join([f"• {cmd}" for cmd in commands_list])
+    # Build menu text
+    menu_text = "📋 *Main Menu*"
     
     # Create inline keyboard - Reviews first, then main_buttons, Orders/Wishlist/Cart and Contact/About at bottom
     inline_keyboard_buttons = []
