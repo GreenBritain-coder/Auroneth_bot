@@ -87,7 +87,7 @@ export async function PATCH(request: NextRequest) {
 
     // Bot-owners can only update messages for their own bots
     if (payload.role !== 'super-admin') {
-      const existing = await ContactMessage.findById(messageId).lean();
+      const existing = await ContactMessage.findById(messageId).lean() as { botId: string } | null;
       if (!existing) {
         return NextResponse.json({ error: 'Message not found' }, { status: 404 });
       }
