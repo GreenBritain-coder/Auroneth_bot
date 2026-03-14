@@ -22,8 +22,8 @@ export async function GET() {
       const counts = await ordersCollection.aggregate([
         { $match: { paymentStatus: 'paid' } },
         { $group: { _id: '$botId', count: { $sum: 1 } } }
-      ]).toArray();
-      counts.forEach((c: { _id: string | { toString?: () => string }; count: number }) => {
+      ]).toArray() as Array<{ _id: string | { toString?: () => string }; count: number }>;
+      counts.forEach((c) => {
         const id = typeof c._id === 'string' ? c._id : (c._id as { toString?: () => string })?.toString?.() ?? '';
         orderCounts[id] = c.count;
       });
