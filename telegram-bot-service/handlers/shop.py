@@ -593,34 +593,41 @@ async def handle_category(callback: CallbackQuery):
                     reply_markup=back_keyboard
                 )
             for product in products:
-                base_price = product.get('base_price') or product.get('price', 0)
-                product_text = f"🛍️ *{product['name']}*\n\n"
-                product_text += f"{product.get('description', '')}\n\n"
-                product_text += f"💰 Base Price: {base_price} {product['currency']}"
-                if product.get("variations"):
-                    product_text += f"\n📦 Variations available"
-                product_id_str = str(product['_id'])
-                keyboard = InlineKeyboardMarkup(inline_keyboard=[[
-                    InlineKeyboardButton(text="🛒 Add to Cart", callback_data=f"add_cart:{product_id_str}"),
-                    InlineKeyboardButton(text="ℹ️ More Info", callback_data=f"product_info:{product_id_str}")
-                ]])
-                image_url = product.get("image_url") or ""
-                if image_url and image_url.strip() and image_url.startswith("http"):
-                    await callback.message.answer_photo(
-                        photo=image_url,
-                        caption=product_text,
-                        parse_mode="Markdown",
-                        reply_markup=keyboard
-                    )
-                elif image_url and image_url.strip() and image_url.startswith("data:"):
-                    await callback.message.answer_photo(
-                        photo=image_url,
-                        caption=product_text,
-                        parse_mode="Markdown",
-                        reply_markup=keyboard
-                    )
-                else:
-                    await callback.message.answer(product_text, parse_mode="Markdown", reply_markup=keyboard)
+                try:
+                    base_price = product.get('base_price') or product.get('price', 0)
+                    product_text = f"🛍️ *{product['name']}*\n\n"
+                    product_text += f"{product.get('description', '')}\n\n"
+                    product_text += f"💰 Base Price: {base_price} {product['currency']}"
+                    if product.get("variations"):
+                        product_text += f"\n📦 Variations available"
+                    product_id_str = str(product['_id'])
+                    keyboard = InlineKeyboardMarkup(inline_keyboard=[[
+                        InlineKeyboardButton(text="🛒 Add to Cart", callback_data=f"add_cart:{product_id_str}"),
+                        InlineKeyboardButton(text="ℹ️ More Info", callback_data=f"product_info:{product_id_str}")
+                    ]])
+                    image_url = product.get("image_url") or ""
+                    if image_url and image_url.strip() and image_url.startswith("http"):
+                        await callback.message.answer_photo(
+                            photo=image_url,
+                            caption=product_text,
+                            parse_mode="Markdown",
+                            reply_markup=keyboard
+                        )
+                    elif image_url and image_url.strip() and image_url.startswith("data:"):
+                        img_file = await prepare_image_for_telegram(image_url)
+                        if img_file:
+                            await callback.message.answer_photo(
+                                photo=img_file,
+                                caption=product_text,
+                                parse_mode="Markdown",
+                                reply_markup=keyboard
+                            )
+                        else:
+                            await callback.message.answer(product_text, parse_mode="Markdown", reply_markup=keyboard)
+                    else:
+                        await callback.message.answer(product_text, parse_mode="Markdown", reply_markup=keyboard)
+                except Exception as e:
+                    print(f"Error sending product {product.get('name', '?')}: {e}")
             return
         try:
             await callback.message.edit_text("📁 No subcategories or products available in this category.")
@@ -681,14 +688,31 @@ async def handle_subcategory(callback: CallbackQuery):
     bot_id = str(bot_config["_id"])
     db = get_database()
     products_collection = db.products
-    
-    # Get products for this subcategory and bot
-    # Support products without subcategory_id for backward compatibility
+
+    from bson import ObjectId
+
+    # Support both string and ObjectId for subcategory_id and bot_ids
+    def _match_subcat_id(sid):
+        try:
+            if sid and len(str(sid)) == 24:
+                return {"$in": [sid, ObjectId(sid)]}
+            return sid
+        except Exception:
+            return sid
+
+    def _match_bot_ids(bid):
+        try:
+            if bid and len(str(bid)) == 24:
+                return {"$in": [bid, ObjectId(bid)]}
+            return bid
+        except Exception:
+            return bid
+
+    # Get products for this subcategory and bot (match subcategory_id, support type flexibility)
     products = await products_collection.find({
-        "$or": [
-            {"subcategory_id": subcategory_id, "bot_ids": bot_id},
-            {"subcategory_id": {"$exists": False}, "bot_ids": bot_id},
-            {"subcategory_id": "", "bot_ids": bot_id}
+        "$and": [
+            {"subcategory_id": _match_subcat_id(subcategory_id)},
+            {"bot_ids": _match_bot_ids(bot_id)}
         ]
     }).to_list(length=50)
     
@@ -706,62 +730,74 @@ async def handle_subcategory(callback: CallbackQuery):
     
     # First, update the navigation message to show we're viewing products
     subcategory_collection = db.subcategories
-    subcategory = await subcategory_collection.find_one({"_id": subcategory_id})
+    try:
+        subcategory = await subcategory_collection.find_one({"_id": ObjectId(subcategory_id)})
+    except Exception:
+        subcategory = await subcategory_collection.find_one({"_id": subcategory_id})
     subcategory_name = subcategory.get("name", "Products") if subcategory else "Products"
     
-    # Try to edit the message to show product list header
+    # Try to edit the message to show product list header (with back buttons)
+    back_keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="⬅️ Back to Categories", callback_data="shop")],
+        [InlineKeyboardButton(text="📋 Back to Menu", callback_data="menu")]
+    ])
     try:
-        await callback.message.edit_text(f"🛍️ *Products in {subcategory_name}*\n\nSelect a product:", parse_mode="Markdown")
-    except:
-        # If edit fails, products will be sent as new messages anyway
+        await callback.message.edit_text(
+            f"🛍️ *Products in {subcategory_name}*\n\nSelect a product:",
+            parse_mode="Markdown",
+            reply_markup=back_keyboard
+        )
+    except Exception:
         pass
-    
+
     # Send products as separate messages (one per product)
     for product in products:
-        base_price = product.get('base_price') or product.get('price', 0)
-        product_text = f"🛍️ *{product['name']}*\n\n"
-        product_text += f"{product.get('description', '')}\n\n"
-        product_text += f"💰 Base Price: {base_price} {product['currency']}"
-        
-        if product.get("variations"):
-            product_text += f"\n📦 Variations available"
-        
-        # Product button - ensure ID is converted to string
-        product_id_str = str(product['_id'])
-        keyboard = InlineKeyboardMarkup(inline_keyboard=[[
-            InlineKeyboardButton(
-                text="Select Product",
-                callback_data=f"product:{product_id_str}"
-            )
-        ]])
-        
-        image_url = product.get("image_url")
-        image_file = await prepare_image_for_telegram(image_url) if image_url else None
-        
-        if image_file:
-            try:
-                await callback.message.answer_photo(
-                    photo=image_file,
-                    caption=product_text,
-                    parse_mode="Markdown",
-                    reply_markup=keyboard
+        try:
+            base_price = product.get('base_price') or product.get('price', 0)
+            product_text = f"🛍️ *{product['name']}*\n\n"
+            product_text += f"{product.get('description', '')}\n\n"
+            product_text += f"💰 Base Price: {base_price} {product['currency']}"
+
+            if product.get("variations"):
+                product_text += f"\n📦 Variations available"
+
+            product_id_str = str(product['_id'])
+            keyboard = InlineKeyboardMarkup(inline_keyboard=[[
+                InlineKeyboardButton(
+                    text="Select Product",
+                    callback_data=f"product:{product_id_str}"
                 )
-            except Exception as e:
-                print(f"Error sending product image (base64): {e}")
+            ]])
+
+            image_url = product.get("image_url")
+            image_file = await prepare_image_for_telegram(image_url) if image_url else None
+
+            if image_file:
+                try:
+                    await callback.message.answer_photo(
+                        photo=image_file,
+                        caption=product_text,
+                        parse_mode="Markdown",
+                        reply_markup=keyboard
+                    )
+                except Exception as e:
+                    print(f"Error sending product image (base64): {e}")
+                    await callback.message.answer(product_text, parse_mode="Markdown", reply_markup=keyboard)
+            elif image_url and image_url.strip():
+                try:
+                    await callback.message.answer_photo(
+                        photo=image_url,
+                        caption=product_text,
+                        parse_mode="Markdown",
+                        reply_markup=keyboard
+                    )
+                except Exception as e:
+                    print(f"Error sending product image (URL): {e}")
+                    await callback.message.answer(product_text, parse_mode="Markdown", reply_markup=keyboard)
+            else:
                 await callback.message.answer(product_text, parse_mode="Markdown", reply_markup=keyboard)
-        elif image_url and image_url.strip():
-            try:
-                await callback.message.answer_photo(
-                    photo=image_url,
-                    caption=product_text,
-                    parse_mode="Markdown",
-                    reply_markup=keyboard
-                )
-            except Exception as e:
-                print(f"Error sending product image (URL): {e}")
-                await callback.message.answer(product_text, parse_mode="Markdown", reply_markup=keyboard)
-        else:
-            await callback.message.answer(product_text, parse_mode="Markdown", reply_markup=keyboard)
+        except Exception as e:
+            print(f"Error sending product {product.get('name', '?')}: {e}")
     
     # Note: Products are sent as separate messages (one per product), which is expected behavior
     # The navigation messages (category/subcategory) should be edited, not products
