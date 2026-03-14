@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '../../../lib/db';
-import { ContactMessage } from '../../../lib/models';
+import { ContactMessage, Bot } from '../../../lib/models';
 import { getTokenFromRequest, verifyToken } from '../../../lib/auth';
 
 export async function GET(request: NextRequest) {
@@ -24,9 +24,26 @@ export async function GET(request: NextRequest) {
 
     // Build query
     const query: any = {};
-    if (botId) {
+
+    // Bot-owners only see messages for their own bots
+    if (payload.role !== 'super-admin') {
+      const userBots = await Bot.find({ owner: payload.userId });
+      const userBotIds = userBots.map((b) => b._id.toString());
+      if (userBotIds.length === 0) {
+        return NextResponse.json([]);
+      }
+      if (botId) {
+        if (!userBotIds.includes(botId)) {
+          return NextResponse.json([]);
+        }
+        query.botId = botId;
+      } else {
+        query.botId = { $in: userBotIds };
+      }
+    } else if (botId) {
       query.botId = botId;
     }
+
     if (unreadOnly) {
       query.read = false;
     }
@@ -66,6 +83,18 @@ export async function PATCH(request: NextRequest) {
 
     if (!messageId) {
       return NextResponse.json({ error: 'Message ID required' }, { status: 400 });
+    }
+
+    // Bot-owners can only update messages for their own bots
+    if (payload.role !== 'super-admin') {
+      const existing = await ContactMessage.findById(messageId).lean();
+      if (!existing) {
+        return NextResponse.json({ error: 'Message not found' }, { status: 404 });
+      }
+      const bot = await Bot.findById(existing.botId);
+      if (!bot || bot.owner !== payload.userId) {
+        return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+      }
     }
 
     // Update message
@@ -114,10 +143,14 @@ export async function POST(request: NextRequest) {
     }
 
     // Get bot token from database
-    const { Bot } = await import('../../../lib/models');
     const bot = await Bot.findById(botId);
     if (!bot) {
       return NextResponse.json({ error: 'Bot not found' }, { status: 404 });
+    }
+
+    // Bot-owners can only reply to messages for their own bots
+    if (payload.role !== 'super-admin' && bot.owner !== payload.userId) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
     // Send message via Telegram Bot API
