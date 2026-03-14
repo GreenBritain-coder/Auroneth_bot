@@ -113,6 +113,9 @@ export default function NewCategoryPage() {
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Assign to Bots</label>
+            <p className="mb-2 text-sm text-gray-500">
+              Required for the category to appear in the product form and shop. Your bot(s) will be auto-assigned if none selected.
+            </p>
             <div className="space-y-2 max-h-60 overflow-y-auto border border-gray-200 rounded-md p-3">
               {bots.map((bot) => (
                 <label key={bot._id} className="flex items-center">

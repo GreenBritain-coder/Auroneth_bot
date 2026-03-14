@@ -237,12 +237,18 @@ export async function POST(request: NextRequest) {
 
     // Bot-owners can only assign categories to their own bots
     let bot_ids = data.bot_ids || [];
-    if (payload.role !== 'super-admin' && bot_ids.length > 0) {
+    if (payload.role !== 'super-admin') {
       const { Bot } = await import('../../../lib/models');
       const userBots = await Bot.find({ owner: payload.userId });
       const userBotIds = userBots.map(b => b._id.toString());
       
-      bot_ids = bot_ids.filter((id: string) => userBotIds.includes(id));
+      if (bot_ids.length > 0) {
+        bot_ids = bot_ids.filter((id: string) => userBotIds.includes(id));
+      }
+      // Auto-assign user's bot(s) if none selected - so category appears in product form dropdown
+      if (bot_ids.length === 0 && userBotIds.length > 0) {
+        bot_ids = userBotIds;
+      }
     }
 
     const category = new Category({
