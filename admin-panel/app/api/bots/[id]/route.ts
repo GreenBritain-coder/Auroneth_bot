@@ -1,0 +1,201 @@
+import { NextRequest, NextResponse } from 'next/server';
+import connectDB from '@/lib/db';
+import { Bot } from '@/lib/models';
+import { getTokenFromRequest, verifyToken } from '@/lib/auth';
+
+export async function GET(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  try {
+    const token = getTokenFromRequest(request);
+    if (!token) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const payload = await verifyToken(token);
+    if (!payload) {
+      return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
+    }
+
+    await connectDB();
+    const bot = await Bot.findById(params.id);
+
+    if (!bot) {
+      return NextResponse.json({ error: 'Bot not found' }, { status: 404 });
+    }
+
+    // Check ownership: super-admins can access any bot, bot-owners only their own
+    if (payload.role !== 'super-admin' && bot.owner !== payload.userId) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
+    return NextResponse.json(bot);
+  } catch (error) {
+    console.error('Error fetching bot:', error);
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500 }
+    );
+  }
+}
+
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  try {
+    const token = getTokenFromRequest(request);
+    if (!token) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const payload = await verifyToken(token);
+    if (!payload) {
+      return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
+    }
+
+    await connectDB();
+    
+    // Check ownership first
+    const existingBot = await Bot.findById(params.id);
+    if (!existingBot) {
+      return NextResponse.json({ error: 'Bot not found' }, { status: 404 });
+    }
+
+    if (payload.role !== 'super-admin' && existingBot.owner !== payload.userId) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
+    const data = await request.json();
+    
+    console.log('PATCH request - User role:', payload.role);
+    console.log('PATCH request - Data received:', JSON.stringify(data, null, 2));
+    
+    // Bot-owners cannot change owner, super-admins can
+    if (payload.role !== 'super-admin' && data.owner) {
+      delete data.owner;
+    }
+    
+    // Only super-admins can modify categories and featured status
+    if (payload.role !== 'super-admin') {
+      delete data.categories;
+      delete data.featured;
+    } else {
+      console.log('Super-admin updating - categories:', data.categories, 'featured:', data.featured);
+    }
+
+    // Build update object
+    const updateData: any = { ...data };
+    
+    // Always handle cut_off_time explicitly (ensure it's saved even if empty)
+    if (data.cut_off_time !== undefined) {
+      const trimmed = typeof data.cut_off_time === 'string' ? data.cut_off_time.trim() : '';
+      updateData.cut_off_time = trimmed;
+      console.log('Processing cut_off_time from request:', data.cut_off_time, '->', trimmed);
+    }
+    
+    // For super-admins, explicitly handle categories and featured
+    if (payload.role === 'super-admin') {
+      // Always set categories (even if empty array)
+      updateData.categories = Array.isArray(data.categories) ? data.categories : [];
+      // Always set featured (even if false)
+      updateData.featured = data.featured !== undefined ? Boolean(data.featured) : false;
+    } else {
+      // Remove if not super-admin
+      delete updateData.categories;
+      delete updateData.featured;
+    }
+
+    console.log('Updating with data:', JSON.stringify(updateData, null, 2));
+
+    // Update all fields manually to ensure they're saved
+    // Use existingBot which was already fetched for ownership check
+    Object.keys(updateData).forEach((key) => {
+      if (key === 'messages' || key === 'inline_action_messages') {
+        // For nested objects, replace entirely
+        (existingBot as any)[key] = updateData[key];
+      } else if (key === 'main_buttons' && Array.isArray(updateData[key])) {
+        (existingBot as any)[key] = updateData[key];
+      } else if (key === 'menu_inline_buttons' && Array.isArray(updateData[key])) {
+        (existingBot as any)[key] = updateData[key];
+      } else if (key === 'categories' && Array.isArray(updateData[key])) {
+        (existingBot as any)[key] = updateData[key];
+      } else {
+        (existingBot as any)[key] = updateData[key];
+      }
+    });
+
+    // Mark all fields as modified to ensure Mongoose saves them
+    existingBot.markModified('messages');
+    existingBot.markModified('inline_action_messages');
+    existingBot.markModified('main_buttons');
+    existingBot.markModified('menu_inline_buttons');
+    if (updateData.categories) {
+      existingBot.markModified('categories');
+    }
+    // Explicitly mark cut_off_time as modified to ensure it's saved
+    if ('cut_off_time' in updateData) {
+      existingBot.markModified('cut_off_time');
+      console.log('Marked cut_off_time as modified, value:', updateData.cut_off_time);
+    }
+
+    // Save the bot to ensure all changes are persisted
+    await existingBot.save();
+    
+    // Fetch fresh from database using lean() to get raw document
+    const updatedBot = await Bot.findById(params.id).lean();
+    
+    console.log('Bot after update - categories:', updatedBot?.categories, 'featured:', updatedBot?.featured, 'cut_off_time:', updatedBot?.cut_off_time);
+    console.log('Bot document keys:', Object.keys(updatedBot || {}));
+    console.log('Full bot document:', JSON.stringify(updatedBot, null, 2));
+    
+    // Return the updated bot with all fields
+    return NextResponse.json(updatedBot);
+  } catch (error) {
+    console.error('Error updating bot:', error);
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500 }
+    );
+  }
+}
+
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  try {
+    const token = getTokenFromRequest(request);
+    if (!token) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const payload = await verifyToken(token);
+    if (!payload) {
+      return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
+    }
+
+    await connectDB();
+    
+    // Check ownership first
+    const bot = await Bot.findById(params.id);
+    if (!bot) {
+      return NextResponse.json({ error: 'Bot not found' }, { status: 404 });
+    }
+
+    if (payload.role !== 'super-admin' && bot.owner !== payload.userId) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
+    await Bot.findByIdAndDelete(params.id);
+    return NextResponse.json({ message: 'Bot deleted' });
+  } catch (error) {
+    console.error('Error deleting bot:', error);
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500 }
+    );
+  }
+}
+

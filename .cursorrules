@@ -1,0 +1,18 @@
+# Project Rules and Configuration
+
+## Python Version
+- The telegram-bot-service uses **Python 3.12**
+- Use `py -3.12` command to run Python scripts for this project
+- Dependencies are already installed, no need to reinstall unless explicitly requested
+
+## Python Commands
+- Always use `py -3.12` instead of `python` when running scripts in telegram-bot-service
+- Example: `py -3.12 main.py` to start the bot
+
+## Project Structure
+- telegram-bot-service: Python 3.12 + aiogram bot
+- admin-panel: Next.js admin dashboard
+- front-page: Next.js public bot listing
+
+
+

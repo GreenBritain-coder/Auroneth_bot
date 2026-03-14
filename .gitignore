@@ -1,0 +1,39 @@
+# Environment and secrets (never commit)
+.env
+.env.local
+.env.*.local
+*.env
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+*.log
+
+# Node
+node_modules/
+.pnp
+.pnp.js
+.next/
+out/
+build/
+*.tsbuildinfo
+next-env.d.ts
+
+# IDE and OS
+.DS_Store
+.idea/
+.vscode/
+*.pem
+
+# Vercel / misc
+.vercel
+coverage/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*

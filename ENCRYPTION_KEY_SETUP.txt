@@ -1,0 +1,24 @@
+IMPORTANT: Address Encryption Key Setup
+
+Generated Encryption Key:
+pPELJJX8LjZwWK-FVmIyb8j4sLlh5BvCr3Yf9WaA088=
+
+Add this to your .env files:
+
+1. telegram-bot-service/.env
+   Add this line:
+   ADDRESS_ENCRYPTION_KEY=pPELJJX8LjZwWK-FVmIyb8j4sLlh5BvCr3Yf9WaA088=
+
+2. admin-panel/.env
+   Add this line:
+   ADDRESS_ENCRYPTION_KEY=pPELJJX8LjZwWK-FVmIyb8j4sLlh5BvCr3Yf9WaA088=
+
+⚠️ IMPORTANT:
+- Use the SAME key in both services
+- Never commit .env files to version control
+- Keep this key secure
+- For production, generate a new key and rotate periodically
+
+To generate a new key:
+python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+

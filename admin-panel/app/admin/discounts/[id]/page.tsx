@@ -1,0 +1,396 @@
+'use client';
+
+import { useState, useEffect } from 'react';
+import { useRouter, useParams } from 'next/navigation';
+import Link from 'next/link';
+
+interface Bot {
+  _id: string;
+  name: string;
+}
+
+interface Discount {
+  _id: string;
+  code: string;
+  description?: string;
+  discount_type: 'percentage' | 'fixed';
+  discount_value: number;
+  bot_ids: string[];
+  min_order_amount?: number;
+  max_discount_amount?: number;
+  usage_limit?: number;
+  used_count: number;
+  valid_from: Date;
+  valid_until: Date;
+  active: boolean;
+}
+
+export default function EditDiscountPage() {
+  const router = useRouter();
+  const params = useParams();
+  const discountId = params.id as string;
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const [bots, setBots] = useState<Bot[]>([]);
+  const [formData, setFormData] = useState({
+    code: '',
+    description: '',
+    discount_type: 'percentage' as 'percentage' | 'fixed',
+    discount_value: 10,
+    bot_ids: [] as string[],
+    min_order_amount: '',
+    max_discount_amount: '',
+    usage_limit: '',
+    valid_from: '',
+    valid_until: '',
+    active: true,
+  });
+
+  useEffect(() => {
+    fetchDiscount();
+    fetchBots();
+  }, [discountId]);
+
+  const fetchDiscount = async () => {
+    try {
+      const response = await fetch(`/api/discounts/${discountId}`);
+      if (response.ok) {
+        const data: Discount = await response.json();
+        setFormData({
+          code: data.code,
+          description: data.description || '',
+          discount_type: data.discount_type,
+          discount_value: data.discount_value,
+          bot_ids: data.bot_ids || [],
+          min_order_amount: data.min_order_amount?.toString() || '',
+          max_discount_amount: data.max_discount_amount?.toString() || '',
+          usage_limit: data.usage_limit?.toString() || '',
+          valid_from: new Date(data.valid_from).toISOString().split('T')[0],
+          valid_until: new Date(data.valid_until).toISOString().split('T')[0],
+          active: data.active,
+        });
+      } else {
+        setError('Failed to fetch discount');
+      }
+    } catch (err) {
+      setError('Network error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchBots = async () => {
+    try {
+      const response = await fetch('/api/bots');
+      if (response.ok) {
+        const data = await response.json();
+        setBots(data);
+      }
+    } catch (err) {
+      console.error('Error fetching bots:', err);
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setSaving(true);
+
+    try {
+      const payload = {
+        ...formData,
+        min_order_amount: formData.min_order_amount
+          ? parseFloat(formData.min_order_amount)
+          : undefined,
+        max_discount_amount: formData.max_discount_amount
+          ? parseFloat(formData.max_discount_amount)
+          : undefined,
+        usage_limit: formData.usage_limit
+          ? parseInt(formData.usage_limit)
+          : undefined,
+      };
+
+      const response = await fetch(`/api/discounts/${discountId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (response.ok) {
+        router.push('/admin/discounts');
+      } else {
+        const data = await response.json();
+        setError(data.error || 'Failed to update discount');
+      }
+    } catch (err) {
+      setError('Network error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleBotToggle = (botId: string) => {
+    setFormData((prev) => ({
+      ...prev,
+      bot_ids: prev.bot_ids.includes(botId)
+        ? prev.bot_ids.filter((id) => id !== botId)
+        : [...prev.bot_ids, botId],
+    }));
+  };
+
+  if (loading) {
+    return <div className="text-center py-8">Loading...</div>;
+  }
+
+  return (
+    <div>
+      <div className="mb-6">
+        <Link
+          href="/admin/discounts"
+          className="text-indigo-600 hover:text-indigo-900 text-sm font-medium"
+        >
+          ← Back to Discounts
+        </Link>
+        <h1 className="text-2xl font-bold text-gray-900 mt-4">
+          Edit Discount Code
+        </h1>
+      </div>
+
+      {error && (
+        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded mb-4">
+          {error}
+        </div>
+      )}
+
+      <form onSubmit={handleSubmit} className="bg-white shadow rounded-lg p-6">
+        <div className="space-y-6">
+          <div>
+            <label className="block text-sm font-medium text-gray-700">
+              Discount Code *
+            </label>
+            <input
+              type="text"
+              required
+              value={formData.code}
+              onChange={(e) =>
+                setFormData({ ...formData, code: e.target.value.toUpperCase() })
+              }
+              className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
+              placeholder="SAVE10"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700">
+              Description
+            </label>
+            <textarea
+              value={formData.description}
+              onChange={(e) =>
+                setFormData({ ...formData, description: e.target.value })
+              }
+              className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
+              rows={3}
+              placeholder="Optional description for this discount"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700">
+              Discount Type *
+            </label>
+            <select
+              value={formData.discount_type}
+              onChange={(e) =>
+                setFormData({
+                  ...formData,
+                  discount_type: e.target.value as 'percentage' | 'fixed',
+                })
+              }
+              className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
+            >
+              <option value="percentage">Percentage</option>
+              <option value="fixed">Fixed Amount</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700">
+              Discount Value *
+            </label>
+            <input
+              type="number"
+              required
+              min="0"
+              max={formData.discount_type === 'percentage' ? '100' : undefined}
+              step={formData.discount_type === 'percentage' ? '1' : '0.01'}
+              value={formData.discount_value}
+              onChange={(e) =>
+                setFormData({
+                  ...formData,
+                  discount_value: parseFloat(e.target.value) || 0,
+                })
+              }
+              className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
+            />
+          </div>
+
+          {formData.discount_type === 'percentage' && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700">
+                Maximum Discount Amount (Optional)
+              </label>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                value={formData.max_discount_amount}
+                onChange={(e) =>
+                  setFormData({
+                    ...formData,
+                    max_discount_amount: e.target.value,
+                  })
+                }
+                className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
+                placeholder="50.00"
+              />
+            </div>
+          )}
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700">
+              Minimum Order Amount (Optional)
+            </label>
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              value={formData.min_order_amount}
+              onChange={(e) =>
+                setFormData({ ...formData, min_order_amount: e.target.value })
+              }
+              className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
+              placeholder="20.00"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700">
+              Usage Limit (Optional)
+            </label>
+            <input
+              type="number"
+              min="1"
+              value={formData.usage_limit}
+              onChange={(e) =>
+                setFormData({ ...formData, usage_limit: e.target.value })
+              }
+              className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
+              placeholder="100"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700">
+              Valid From *
+            </label>
+            <input
+              type="date"
+              required
+              value={formData.valid_from}
+              onChange={(e) =>
+                setFormData({ ...formData, valid_from: e.target.value })
+              }
+              className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700">
+              Valid Until *
+            </label>
+            <input
+              type="date"
+              required
+              value={formData.valid_until}
+              onChange={(e) =>
+                setFormData({ ...formData, valid_until: e.target.value })
+              }
+              className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
+              min={formData.valid_from}
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Apply to Bots
+            </label>
+            <div className="border border-gray-300 rounded-md p-3 max-h-48 overflow-y-auto">
+              <button
+                type="button"
+                onClick={() => setFormData({ ...formData, bot_ids: [] })}
+                className="text-sm text-indigo-600 hover:text-indigo-900 mb-2"
+              >
+                {formData.bot_ids.length === 0
+                  ? 'Select All'
+                  : 'Clear Selection'}
+              </button>
+              {bots.map((bot) => (
+                <label
+                  key={bot._id}
+                  className="flex items-center space-x-2 py-1"
+                >
+                  <input
+                    type="checkbox"
+                    checked={formData.bot_ids.includes(bot._id)}
+                    onChange={() => handleBotToggle(bot._id)}
+                    className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                  />
+                  <span className="text-sm text-gray-700">{bot.name}</span>
+                </label>
+              ))}
+            </div>
+            <p className="mt-1 text-sm text-gray-500">
+              Leave empty to apply to all bots
+            </p>
+          </div>
+
+          <div>
+            <label className="flex items-center space-x-2">
+              <input
+                type="checkbox"
+                checked={formData.active}
+                onChange={(e) =>
+                  setFormData({ ...formData, active: e.target.checked })
+                }
+                className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+              />
+              <span className="text-sm font-medium text-gray-700">Active</span>
+            </label>
+          </div>
+
+          <div className="flex justify-end space-x-3">
+            <button
+              type="button"
+              onClick={() => router.push('/admin/discounts')}
+              className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={saving}
+              className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 disabled:opacity-50"
+            >
+              {saving ? 'Saving...' : 'Save Changes'}
+            </button>
+          </div>
+        </div>
+      </form>
+    </div>
+  );
+}
+
