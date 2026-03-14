@@ -635,15 +635,37 @@ export default function EditBotPage() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700">Profile Picture URL</label>
-            <div className="mt-1 flex space-x-2">
+            <label className="block text-sm font-medium text-gray-700">Profile Picture</label>
+            <div className="mt-1 flex flex-wrap gap-2 items-start">
               <input
                 type="url"
-                className="flex-1 block w-full border border-gray-300 rounded-md px-3 py-2"
-                placeholder="https://example.com/bot-avatar.jpg"
+                className="flex-1 min-w-[200px] block border border-gray-300 rounded-md px-3 py-2"
+                placeholder="https://example.com/bot-avatar.jpg or upload below"
                 value={formData.profile_picture_url}
                 onChange={(e) => setFormData({ ...formData, profile_picture_url: e.target.value })}
               />
+              <label className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 cursor-pointer">
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg,image/jpg,image/gif,image/webp"
+                  className="sr-only"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    if (file.size > 2 * 1024 * 1024) {
+                      alert('Image must be under 2MB');
+                      return;
+                    }
+                    const reader = new FileReader();
+                    reader.onload = () => {
+                      setFormData((prev) => ({ ...prev, profile_picture_url: reader.result as string }));
+                    };
+                    reader.readAsDataURL(file);
+                    e.target.value = '';
+                  }}
+                />
+                Upload Image
+              </label>
               {formData.profile_picture_url && (
                 <button
                   type="button"
@@ -656,7 +678,7 @@ export default function EditBotPage() {
               )}
             </div>
             {formData.profile_picture_url && (
-              <div className="mt-2">
+              <div className="mt-2 flex items-center gap-2">
                 <img
                   src={formData.profile_picture_url}
                   alt="Profile preview"
@@ -665,10 +687,17 @@ export default function EditBotPage() {
                     (e.target as HTMLImageElement).style.display = 'none';
                   }}
                 />
+                <button
+                  type="button"
+                  onClick={() => setFormData({ ...formData, profile_picture_url: '' })}
+                  className="text-sm text-red-600 hover:text-red-700"
+                >
+                  Remove
+                </button>
               </div>
             )}
             <p className="mt-1 text-sm text-gray-500">
-              Enter a URL to an image. Click "Update on Telegram" to set it as the bot's profile picture.
+              Enter a URL or upload an image (max 2MB). Save to store in database. "Update on Telegram" syncs to the bot via BotFather.
             </p>
           </div>
 

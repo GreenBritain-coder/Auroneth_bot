@@ -16,7 +16,7 @@ export default function NewBotPage() {
     description: '',
     status: 'live',
     public_listing: true,
-    main_buttons: '',
+    main_buttons: 'Shop, Support, Promotions, Orders',
     welcome_message: '',
     thank_you_message: '',
     profile_picture_url: '',
@@ -220,16 +220,40 @@ export default function NewBotPage() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700">Profile Picture URL (Optional)</label>
-            <input
-              type="url"
-              className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
-              placeholder="https://example.com/bot-avatar.jpg"
-              value={formData.profile_picture_url}
-              onChange={(e) => setFormData({ ...formData, profile_picture_url: e.target.value })}
-            />
+            <label className="block text-sm font-medium text-gray-700">Profile Picture (Optional)</label>
+            <div className="mt-1 flex flex-wrap gap-2 items-start">
+              <input
+                type="url"
+                className="flex-1 min-w-[200px] block border border-gray-300 rounded-md px-3 py-2"
+                placeholder="https://example.com/bot-avatar.jpg or upload below"
+                value={formData.profile_picture_url}
+                onChange={(e) => setFormData({ ...formData, profile_picture_url: e.target.value })}
+              />
+              <label className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 cursor-pointer">
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg,image/jpg,image/gif,image/webp"
+                  className="sr-only"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    if (file.size > 2 * 1024 * 1024) {
+                      alert('Image must be under 2MB');
+                      return;
+                    }
+                    const reader = new FileReader();
+                    reader.onload = () => {
+                      setFormData((prev) => ({ ...prev, profile_picture_url: reader.result as string }));
+                    };
+                    reader.readAsDataURL(file);
+                    e.target.value = '';
+                  }}
+                />
+                Upload Image
+              </label>
+            </div>
             {formData.profile_picture_url && (
-              <div className="mt-2">
+              <div className="mt-2 flex items-center gap-2">
                 <img
                   src={formData.profile_picture_url}
                   alt="Profile preview"
@@ -238,10 +262,17 @@ export default function NewBotPage() {
                     (e.target as HTMLImageElement).style.display = 'none';
                   }}
                 />
+                <button
+                  type="button"
+                  onClick={() => setFormData({ ...formData, profile_picture_url: '' })}
+                  className="text-sm text-red-600 hover:text-red-700"
+                >
+                  Remove
+                </button>
               </div>
             )}
             <p className="mt-1 text-sm text-gray-500">
-              Enter a URL to an image. You can update the profile picture on Telegram after creating the bot.
+              Enter a URL or upload an image (max 2MB). PNG, JPEG, GIF, WebP supported.
             </p>
           </div>
         </div>
