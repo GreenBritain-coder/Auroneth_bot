@@ -2,6 +2,119 @@
 
 This guide explains how to deploy to **Coolify** using the domain **test.greenbritain.club**.
 
+---
+
+## Quick instructions (Coolify UI)
+
+**Repo:** `https://github.com/GreenBritain-coder/Auroneth_bot`  
+**Domains:** `test.greenbritain.club` | `admin.test.greenbritain.club` | `bot.test.greenbritain.club`
+
+### Before you start
+
+- Have **MongoDB** running (same server or external). Note the connection string (e.g. `mongodb://user:pass@host:27017/telegram_bot_platform`).
+- Create **one bot** in Telegram via @BotFather and copy the token (you’ll add it to the bot service later).
+- Decide a **JWT secret** for the admin panel (long random string) and an **address encryption key** (base64). Generate encryption key: `telegram-bot-service/scripts/generate_encryption_key.py` or any base64-encoded 32-byte value.
+
+---
+
+### 1. Front Page (test.greenbritain.club)
+
+1. In Coolify: **Project** → **+ Add Resource** → **Application**.
+2. **Name:** `front-page`.
+3. **Source:** GitHub → connect repo `GreenBritain-coder/Auroneth_bot`, branch `main`.
+4. **Build:**
+   - **Build Pack:** Dockerfile.
+   - **Base Directory:** leave **empty** (build from repo root). **Dockerfile Path:** `front-page/Dockerfile`.
+   - If your Coolify expects “root directory” for the app: set **Base Directory** to `front-page` so the build context is that folder.
+5. **Ports:** Expose port **3000** (Dockerfile exposes 3000).
+6. **Environment Variables:** Add:
+   - `MONGO_URI` = your MongoDB connection string  
+   - `NODE_ENV` = `production`
+7. **Domains:** Add domain `test.greenbritain.club`, enable **SSL** (Let’s Encrypt).
+8. **Deploy.**
+
+---
+
+### 2. Admin Panel (admin.test.greenbritain.club)
+
+1. **+ Add Resource** → **Application**.
+2. **Name:** `admin-panel`.
+3. **Source:** Same repo, branch `main`.
+4. **Build:**
+   - **Build Pack:** Dockerfile.
+   - **Base Directory:** `admin-panel` (build context must be this folder).
+   - **Dockerfile Path:** `Dockerfile` (relative to base).
+5. **Ports:** Expose **3000**.
+6. **Environment Variables:**
+   - `MONGO_URI` = your MongoDB connection string  
+   - `JWT_SECRET` = your long random secret  
+   - `NEXTAUTH_URL` = `https://admin.test.greenbritain.club`  
+   - `NODE_ENV` = `production`  
+   - `ADDRESS_ENCRYPTION_KEY` = your base64 encryption key (same as bot service)  
+   - `PYTHON_SERVICE_URL` = `https://bot.test.greenbritain.club`  
+   - Optional: `AUTO_APPROVE_PAYOUTS` = `true`, `AUTO_PROCESS_PAYOUTS` = `true`
+7. **Domains:** `admin.test.greenbritain.club` + SSL.
+8. **Deploy.**
+
+**Create admin user (first time):** SSH into the server or run a one-off command in Coolify for the admin-panel container (or run locally with same `MONGO_URI`):
+
+```bash
+cd admin-panel && npm run create-admin YOUR_USERNAME YOUR_PASSWORD
+```
+
+If Coolify doesn’t give you a shell, run that from your machine with `MONGO_URI` pointing to your DB so the user is created in the same MongoDB.
+
+---
+
+### 3. Bot service (bot.test.greenbritain.club)
+
+1. **+ Add Resource** → **Application**.
+2. **Name:** `telegram-bot-service` (or `bot`).
+3. **Source:** Same repo, branch `main`.
+4. **Build:**
+   - **Build Pack:** Dockerfile.
+   - **Base Directory:** `telegram-bot-service` (build context must be this folder).
+   - **Dockerfile Path:** `Dockerfile` (relative to base).
+5. **Ports:** Expose **8000**.
+6. **Environment Variables:**
+   - `BOT_TOKEN` = token from @BotFather  
+   - `MONGO_URI` = same MongoDB connection string  
+   - `PORT` = `8000`  
+   - `WEBHOOK_URL` = `https://bot.test.greenbritain.club`  
+   - `CRYPTAPI_BTC_WALLET_ADDRESS` = your BTC address (payments forward here)  
+   - `CRYPTAPI_LTC_WALLET_ADDRESS` = your LTC address  
+   - `CRYPTAPI_ENABLED_CURRENCIES` = `BTC,LTC`  
+   - `ADDRESS_ENCRYPTION_KEY` = same base64 key as admin panel
+7. **Domains:** `bot.test.greenbritain.club` + SSL.
+8. **Deploy.**
+
+After deploy, the bot will listen on 8000; Coolify will route `https://bot.test.greenbritain.club` to this container. Set your bot’s webhook to `https://bot.test.greenbritain.club/webhook` (or whatever path your main.py uses for Telegram).
+
+---
+
+### 4. Multiple bots (optional)
+
+For a second bot, add another Application:
+
+- Same repo, **Base Directory** `telegram-bot-service`, same Dockerfile.
+- Different **name** (e.g. `telegram-bot-service-bot2`).
+- **Port:** 8001 (and set `PORT=8001` in env).
+- **Domain:** e.g. `bot2.test.greenbritain.club`.
+- **Env:** Same as above but `BOT_TOKEN` = second bot’s token.
+
+---
+
+### 5. Checklist
+
+- [ ] MongoDB reachable from all three apps (check firewall / Coolify network).
+- [ ] Front page: https://test.greenbritain.club loads.
+- [ ] Admin: https://admin.test.greenbritain.club loads; you can log in.
+- [ ] Bot: https://bot.test.greenbritain.club is reachable (e.g. returns 404 or health); Telegram webhook set.
+- [ ] In Admin, create a bot and assign the same token; ensure **Webhook URL** in bot config is `https://bot.test.greenbritain.club` (no trailing slash unless your app expects it).
+- [ ] CryptAPI/Blockonomics webhook URL (if used) points to `https://bot.test.greenbritain.club` and the path your app uses for callbacks.
+
+---
+
 ## Domain (test.greenbritain.club)
 
 | Service      | URL                              | Purpose              |

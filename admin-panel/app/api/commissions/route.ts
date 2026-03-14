@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/db';
-import { Order, Bot } from '@/lib/models';
+import { Order, Bot, CommissionPayout } from '@/lib/models';
 import { getTokenFromRequest, verifyToken } from '@/lib/auth';
+import { processOnePayout } from '@/lib/processPayout';
 
 // GET: Get earnings summary for the logged-in user (bot owners earn order amount - commission)
 export async function GET(request: NextRequest) {
@@ -259,11 +260,11 @@ export async function POST(request: NextRequest) {
       earningsByCurrency[orderCurrency] = (earningsByCurrency[orderCurrency] || 0) + earning;
     });
 
-    // Get pending payout requests grouped by currency
+    // Get pending + approved (not yet paid) payout requests for balance calculation
     const { CommissionPayout } = await import('@/lib/models');
     const pendingPayouts = await CommissionPayout.find({
       userId: payload.userId,
-      status: 'pending'
+      status: { $in: ['pending', 'approved'] },
     }).lean();
 
     const pendingPayoutsByCurrency: Record<string, number> = {};
@@ -294,17 +295,26 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Create payout request
+    // Optional: auto-approve (no super-admin step)
+    const autoApprove = process.env.AUTO_APPROVE_PAYOUTS === 'true';
+    const maxAutoApprove = Number(process.env.AUTO_APPROVE_MAX_AMOUNT || '0');
+    const approved = autoApprove && (maxAutoApprove === 0 || amount <= maxAutoApprove);
+
     const payout = new CommissionPayout({
       userId: payload.userId,
       amount,
-      currency: currency.toUpperCase(), // Store as uppercase (BTC, LTC, etc.)
+      currency: currency.toUpperCase(),
       walletAddress: walletAddress.trim(),
-      status: 'pending',
+      status: approved ? 'approved' : 'pending',
       requestedAt: new Date(),
     });
 
     await payout.save();
+
+    // Optional: auto-process (call Python send immediately when approved)
+    if (approved && process.env.AUTO_PROCESS_PAYOUTS === 'true') {
+      await processOnePayout(payout, 'system');
+    }
 
     return NextResponse.json(payout, { status: 201 });
   } catch (error: any) {

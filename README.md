@@ -190,6 +190,8 @@ Deposit addresses from any provider are stored in the **addresses** collection (
 - `MONGO_URI` - MongoDB connection string
 - `JWT_SECRET` - Secret for JWT token generation
 - `NEXTAUTH_URL` - Admin panel URL
+- `PYTHON_SERVICE_URL` - Bot service URL for payouts (e.g. `https://bot.test.greenbritain.club`)
+- Optional: `AUTO_APPROVE_PAYOUTS=true` to auto-approve payout requests; `AUTO_PROCESS_PAYOUTS=true` to auto-call send (marks paid only when provider returns txid). `CRON_SECRET` for batch process-approved endpoint.
 
 **front-page:**
 - `MONGO_URI` - MongoDB connection string
