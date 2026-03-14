@@ -37,6 +37,10 @@ COPY --from=builder /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 
+# Include create-admin script for one-off admin creation from Coolify terminal
+COPY --from=builder /app/scripts ./scripts
+RUN npm install --no-save mongoose bcryptjs dotenv && chown -R nextjs:nodejs scripts node_modules
+
 USER nextjs
 
 EXPOSE 3000

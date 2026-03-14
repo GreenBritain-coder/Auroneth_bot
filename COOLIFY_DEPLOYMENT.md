@@ -72,10 +72,10 @@ This message comes from **Coolify’s reverse proxy**, not from the app. It mean
 7. **Domains:** `admin.test.greenbritain.club` + SSL.
 8. **Deploy.**
 
-**Create admin user (first time):** SSH into the server or run a one-off command in Coolify for the admin-panel container (or run locally with same `MONGO_URI`):
+**Create admin user (first time):** Open Coolify → admin-panel deployment → **Terminal**, then run (the container has the script and uses the same `MONGO_URI` as the app):
 
 ```bash
-cd admin-panel && npm run create-admin YOUR_USERNAME YOUR_PASSWORD
+node scripts/create-admin.js admin Admin123! super-admin
 ```
 
 If Coolify doesn’t give you a shell, run that from your machine with `MONGO_URI` pointing to your DB so the user is created in the same MongoDB.
