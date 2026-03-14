@@ -405,12 +405,12 @@ async def handle_menu_callback(callback: CallbackQuery):
     
     # Build list of available commands
     import re
-    commands_list = ["/start", "/menu", "/wishlist", "/contact", "/reviews"]
+    commands_list = ["/start", "/menu", "/wishlist", "/contact", "/reviews", "/about"]
     for button in main_buttons:
         if isinstance(button, str) and button.strip():
             button_clean = re.sub(r'[^\w\s]', '', button)
             command = re.sub(r'\s+', '_', button_clean.lower().strip())
-            if command not in ["start", "menu", "wishlist", "contact"]:
+            if command not in ["start", "menu", "wishlist", "contact", "about"]:
                 commands_list.append(f"/{command}")
     
     # Build menu text with commands
@@ -418,15 +418,14 @@ async def handle_menu_callback(callback: CallbackQuery):
     menu_text += "🔘 *Tap buttons below or type commands:*\n"
     menu_text += "\n".join([f"• {cmd}" for cmd in commands_list])
     
-    # Create inline keyboard - Contact/Reviews first, then main_buttons, Orders/Wishlist/Cart at bottom
+    # Create inline keyboard - Reviews first, then main_buttons, Orders/Wishlist/Cart and Contact/About at bottom
     inline_keyboard_buttons = []
     user_id = str(callback.from_user.id) if callback.from_user else ""
     bot_id = str(bot_config["_id"])
     from utils.bottom_menu import get_menu_stats
     order_count, cart_display = await get_menu_stats(user_id, bot_id)
-    # First row: Contact, Reviews
+    # First row: Reviews only
     inline_keyboard_buttons.append([
-        InlineKeyboardButton(text="💬 Contact", callback_data="contact"),
         InlineKeyboardButton(text="⭐ Reviews", callback_data="view_all_reviews")
     ])
     # Filter out Orders from main_buttons (we have it in bottom row with dynamic count)
@@ -448,11 +447,15 @@ async def handle_menu_callback(callback: CallbackQuery):
                     callback_data=callback_data_2
                 ))
             inline_keyboard_buttons.append(button_row)
-    # Bottom row: Orders (N) | Wishlist | Cart (£X.XX)
+    # Bottom rows: Orders | Wishlist | Cart, then Contact | About
     inline_keyboard_buttons.append([
         InlineKeyboardButton(text=f"📦 Orders ({order_count})", callback_data="orders"),
         InlineKeyboardButton(text="❤️ Wishlist", callback_data="view_wishlist"),
         InlineKeyboardButton(text=f"🛒 {cart_display}", callback_data="view_cart"),
+    ])
+    inline_keyboard_buttons.append([
+        InlineKeyboardButton(text="💬 Contact", callback_data="contact"),
+        InlineKeyboardButton(text="ℹ️ About", callback_data="about"),
     ])
     
     # Edit the message to show menu directly
@@ -476,6 +479,34 @@ async def handle_menu_callback(callback: CallbackQuery):
             await callback.message.answer(menu_text, parse_mode="Markdown", reply_markup=ReplyKeyboardRemove())
 
 
+@router.callback_query(F.data == "about")
+async def handle_about_callback(callback: CallbackQuery):
+    """Handle About button - show vendor/bot info"""
+    await safe_answer_callback(callback)
+    
+    bot_config = await get_bot_config()
+    if not bot_config:
+        try:
+            await callback.message.answer("❌ Bot configuration not found.")
+        except:
+            pass
+        return
+    
+    # Prefer custom "about" message, then bot description
+    messages = bot_config.get("messages", {})
+    about_text = messages.get("about", "").strip() or bot_config.get("description", "").strip()
+    if not about_text:
+        about_text = "ℹ️ About\n\nWelcome! This is a secure marketplace. Browse products, place orders, and contact the vendor through the Contact button."
+    
+    try:
+        await callback.message.answer(about_text, parse_mode="Markdown")
+    except Exception:
+        try:
+            await callback.message.answer(about_text)
+        except Exception:
+            await callback.message.answer("ℹ️ About\n\nWelcome! Browse products and use the Contact button for support.")
+
+
 @router.message(Command("refresh"))
 async def cmd_refresh(message: Message):
     """Refresh menu - removes keyboard buttons"""
@@ -484,6 +515,28 @@ async def cmd_refresh(message: Message):
     
     # Send message confirming keyboard removal
     await message.answer("✅ Keyboard refreshed! Reply keyboard has been removed. Use /menu to see inline buttons.", reply_markup=keyboard)
+
+
+@router.message(Command("about"))
+async def cmd_about(message: Message):
+    """Handle /about command - show vendor/bot info"""
+    bot_config = await get_bot_config()
+    if not bot_config:
+        await message.answer("❌ Bot configuration not found.", reply_markup=ReplyKeyboardRemove())
+        return
+    
+    messages = bot_config.get("messages", {})
+    about_text = messages.get("about", "").strip() or bot_config.get("description", "").strip()
+    if not about_text:
+        about_text = "ℹ️ About\n\nWelcome! This is a secure marketplace. Browse products, place orders, and contact the vendor through the Contact button."
+    
+    try:
+        await message.answer(about_text, parse_mode="Markdown", reply_markup=ReplyKeyboardRemove())
+    except Exception:
+        try:
+            await message.answer(about_text, reply_markup=ReplyKeyboardRemove())
+        except Exception:
+            await message.answer("ℹ️ About\n\nWelcome! Browse products and use the Contact button for support.", reply_markup=ReplyKeyboardRemove())
 
 
 @router.message(Command("menu"))
@@ -501,12 +554,12 @@ async def cmd_menu(message: Message):
     
     # Build list of available commands
     import re
-    commands_list = ["/start", "/menu", "/wishlist", "/contact", "/reviews"]
+    commands_list = ["/start", "/menu", "/wishlist", "/contact", "/reviews", "/about"]
     for button in main_buttons:
         if isinstance(button, str) and button.strip():
             button_clean = re.sub(r'[^\w\s]', '', button)
             command = re.sub(r'\s+', '_', button_clean.lower().strip())
-            if command not in ["start", "menu", "wishlist", "contact"]:
+            if command not in ["start", "menu", "wishlist", "contact", "about"]:
                 commands_list.append(f"/{command}")
     
     # Build menu text with commands
@@ -514,15 +567,14 @@ async def cmd_menu(message: Message):
     menu_text += "🔘 *Tap buttons below or type commands:*\n"
     menu_text += "\n".join([f"• {cmd}" for cmd in commands_list])
     
-    # Create inline keyboard - Contact/Reviews first, then main_buttons, Orders/Wishlist/Cart at bottom
+    # Create inline keyboard - Reviews first, then main_buttons, Orders/Wishlist/Cart and Contact/About at bottom
     inline_keyboard_buttons = []
     user_id = str(message.from_user.id) if message.from_user else ""
     bot_id = str(bot_config["_id"])
     from utils.bottom_menu import get_menu_stats
     order_count, cart_display = await get_menu_stats(user_id, bot_id)
-    # First row: Contact, Reviews
+    # First row: Reviews only
     inline_keyboard_buttons.append([
-        InlineKeyboardButton(text="💬 Contact", callback_data="contact"),
         InlineKeyboardButton(text="⭐ Reviews", callback_data="view_all_reviews")
     ])
     # Filter out Orders from main_buttons (we have it in bottom row with dynamic count)
@@ -544,11 +596,15 @@ async def cmd_menu(message: Message):
                     callback_data=callback_data_2
                 ))
             inline_keyboard_buttons.append(button_row)
-    # Bottom row: Orders (N) | Wishlist | Cart (£X.XX)
+    # Bottom rows: Orders | Wishlist | Cart, then Contact | About
     inline_keyboard_buttons.append([
         InlineKeyboardButton(text=f"📦 Orders ({order_count})", callback_data="orders"),
         InlineKeyboardButton(text="❤️ Wishlist", callback_data="view_wishlist"),
         InlineKeyboardButton(text=f"🛒 {cart_display}", callback_data="view_cart"),
+    ])
+    inline_keyboard_buttons.append([
+        InlineKeyboardButton(text="💬 Contact", callback_data="contact"),
+        InlineKeyboardButton(text="ℹ️ About", callback_data="about"),
     ])
     
     # Show inline menu
