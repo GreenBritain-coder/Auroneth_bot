@@ -15,6 +15,12 @@ This guide explains how to deploy to **Coolify** using the domain **test.greenbr
 - Create **one bot** in Telegram via @BotFather and copy the token (you’ll add it to the bot service later).
 - Decide a **JWT secret** for the admin panel (long random string) and an **address encryption key** (base64). Generate encryption key: `telegram-bot-service/scripts/generate_encryption_key.py` or any base64-encoded 32-byte value.
 
+### Deployment finished but fixes didn't work?
+
+→ See **"New changes not showing after deploy"** below. Use **Force Deploy (without cache)** on front-page, admin-panel, and telegram-bot-service, then hard refresh your browser.
+
+---
+
 ### 404 "Page not found"?
 
 - **If you only deployed the front-page:**  
@@ -52,16 +58,29 @@ This message comes from **Coolify’s reverse proxy**, not from the app. It mean
 3. **Check port** — The front-page Dockerfile exposes **3000**. In the app’s Coolify configuration, **Ports Exposes** (or Port) must be **3000** so the proxy forwards correctly.
 4. **Redeploy** — After changing env or port, click **Deploy** and wait until the new container is **Running**, then reload the site.
 
-### New changes not showing after deploy (e.g. new UI, columns, buttons)
+### New changes not showing after deploy (e.g. dynamic sales/rating, Orders table scroll, UI fixes)
 
-If you pushed code to GitHub and redeployed but the live site still shows the old version:
+**If you pushed fixes to GitHub and redeployed but the live site still shows the old version:**
 
-1. **Force deploy without cache** — In Coolify → **admin-panel** app → **Deploy** button. Before deploying, click **"Advanced"** (or the dropdown next to Deploy) and select **"Force Deploy (without cache)"**. This runs `docker build --no-cache` so no cached layers are reused. Alternatively: **Configuration** → **Advanced** → enable **"Disabled Build Cache"**, then Deploy.
-2. **Verify the correct branch** — In **Source** settings, ensure the app pulls from `main` (or your deployment branch).
-3. **Check deployment logs** — After deploy, open **Deployments** → latest run → **Logs**. Confirm it cloned the latest commit from GitHub (check the commit hash).
-4. **Hard refresh the browser** — After a successful deploy, press `Ctrl+Shift+R` (or `Cmd+Shift+R` on Mac) or use an incognito window.
+1. **Force deploy without cache** — For **each** app (front-page, admin-panel):
+   - Coolify → app → **Deploy** → **Advanced** → **"Force Deploy (without cache)"**
+   - Or: **Configuration** → **Advanced** → enable **"Disabled Build Cache"** → Deploy
+   - This runs `docker build --no-cache` so cached layers are not reused.
 
-**Optional:** If your Coolify supports **Build Arguments**, add `CACHEBUST` with value `$(date +%s)` (or the current git commit SHA) to force the builder to invalidate cache on each deploy.
+2. **Redeploy all three apps** — The fixes affect multiple services:
+   - **front-page** (test.greenbritain.club): dynamic SALES and RATING
+   - **admin-panel** (admin.test.greenbritain.club): Orders table horizontal scroll
+   - **telegram-bot-service** (bot.test.greenbritain.club): Contact button, bottom menu
+
+3. **Verify the correct branch** — In **Source** settings, ensure each app pulls from `main` (or your deployment branch).
+
+4. **Check deployment logs** — After deploy, open **Deployments** → latest run → **Logs**. Confirm it cloned the latest commit from GitHub (check the commit hash matches your push).
+
+5. **Hard refresh the browser** — After a successful deploy, press `Ctrl+Shift+R` (or `Cmd+Shift+R` on Mac) or use an incognito/private window to bypass cache.
+
+**If SALES still shows 0+ and RATING shows N/A after force deploy:**
+- Ensure **front-page** has `MONGO_URI` set to the same MongoDB as admin-panel and bot service.
+- For RATING: set **rating** and **rating_count** in Admin Panel → Bots → Edit Bot (e.g. "96.81" and "7707").
 
 ---
 

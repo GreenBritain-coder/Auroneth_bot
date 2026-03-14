@@ -143,6 +143,38 @@ async def get_cart_total(user_id: str, bot_id: str, currency: str = "GBP") -> st
         return f"{total:.2f}"
 
 
+async def get_cart_total_display(user_id: str, bot_id: str) -> str:
+    """Get formatted cart total for display (e.g. £19.00 or £0.00)"""
+    db = get_database()
+    carts_collection = db.carts
+    products_collection = db.products
+    
+    cart = await carts_collection.find_one({
+        "user_id": user_id,
+        "bot_id": bot_id
+    })
+    
+    if not cart or not cart.get("items"):
+        return "£0.00"
+    
+    total = 0
+    currency = "GBP"
+    for item in cart.get("items", []):
+        from bson import ObjectId
+        try:
+            product = await products_collection.find_one({"_id": ObjectId(item["product_id"])})
+        except Exception:
+            product = await products_collection.find_one({"_id": item["product_id"]})
+        if product:
+            currency = product.get("currency", "GBP")
+        total += item.get("price", 0) * item.get("quantity", 0)
+    
+    symbol = "£" if currency == "GBP" else ("€" if currency == "EUR" else currency)
+    if currency in ["BTC", "LTC", "ETH", "USDT"]:
+        return f"{symbol}{total:.8f}"
+    return f"{symbol}{total:.2f}"
+
+
 def calculate_increment_amount(product: dict, variation=None) -> float:
     """Calculate increment amount for quantity adjustment"""
     # If product has increment_amount field, use it

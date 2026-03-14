@@ -375,7 +375,7 @@ async def show_welcome_message(message: Message, bot_config: dict, secret_phrase
     # Always remove reply keyboard on /start
     reply_keyboard = ReplyKeyboardRemove()
     
-    # Create inline keyboard with only menu button (contact button is only in menu)
+    # Create inline keyboard with menu button
     inline_keyboard = InlineKeyboardMarkup(inline_keyboard=[[
         InlineKeyboardButton(text="📋 Open Menu", callback_data="menu")
     ]])
@@ -418,33 +418,38 @@ async def handle_menu_callback(callback: CallbackQuery):
     menu_text += "🔘 *Tap buttons below or type commands:*\n"
     menu_text += "\n".join([f"• {cmd}" for cmd in commands_list])
     
-    # Create inline keyboard from all active main buttons
+    # Create inline keyboard - first row: Orders (N) | Wishlist | Cart (£X.XX) with dynamic values
     inline_keyboard_buttons = []
-    
-    # Always add wishlist, contact, and reviews buttons as the first row
+    user_id = str(callback.from_user.id) if callback.from_user else ""
+    bot_id = str(bot_config["_id"])
+    from utils.bottom_menu import get_menu_stats
+    order_count, cart_display = await get_menu_stats(user_id, bot_id)
     inline_keyboard_buttons.append([
-        InlineKeyboardButton(text="📝 Wishlist", callback_data="view_wishlist"),
+        InlineKeyboardButton(text=f"📦 Orders ({order_count})", callback_data="orders"),
+        InlineKeyboardButton(text="❤️ Wishlist", callback_data="view_wishlist"),
+        InlineKeyboardButton(text=f"🛒 {cart_display}", callback_data="view_cart"),
+    ])
+    # Second row: Contact, Reviews
+    inline_keyboard_buttons.append([
         InlineKeyboardButton(text="💬 Contact", callback_data="contact"),
         InlineKeyboardButton(text="⭐ Reviews", callback_data="view_all_reviews")
     ])
-    
-    if main_buttons and len(main_buttons) > 0:
-        # Always show all main buttons as inline buttons (2 per row)
-        for i in range(0, len(main_buttons), 2):
+    # Filter out Orders from main_buttons (we have it in row 1 with dynamic count)
+    main_buttons_filtered = [b for b in main_buttons if re.sub(r'[^\w\s]', '', str(b).lower()).strip() != "orders"]
+    if main_buttons_filtered and len(main_buttons_filtered) > 0:
+        for i in range(0, len(main_buttons_filtered), 2):
             button_row = []
-            # Create button for first item in row - strip emojis and special chars for callback_data
-            button_text_clean = re.sub(r'[^\w\s]', '', main_buttons[i])
+            button_text_clean = re.sub(r'[^\w\s]', '', main_buttons_filtered[i])
             callback_data_1 = re.sub(r'\s+', '_', button_text_clean.lower().strip())
             button_row.append(InlineKeyboardButton(
-                text=main_buttons[i], 
+                text=main_buttons_filtered[i], 
                 callback_data=callback_data_1
             ))
-            # Add second button if available
-            if i + 1 < len(main_buttons):
-                button_text_clean_2 = re.sub(r'[^\w\s]', '', main_buttons[i + 1])
+            if i + 1 < len(main_buttons_filtered):
+                button_text_clean_2 = re.sub(r'[^\w\s]', '', main_buttons_filtered[i + 1])
                 callback_data_2 = re.sub(r'\s+', '_', button_text_clean_2.lower().strip())
                 button_row.append(InlineKeyboardButton(
-                    text=main_buttons[i + 1], 
+                    text=main_buttons_filtered[i + 1], 
                     callback_data=callback_data_2
                 ))
             inline_keyboard_buttons.append(button_row)
@@ -508,45 +513,47 @@ async def cmd_menu(message: Message):
     menu_text += "🔘 *Tap buttons below or type commands:*\n"
     menu_text += "\n".join([f"• {cmd}" for cmd in commands_list])
     
-    # Create inline keyboard from all active main buttons
+    # Create inline keyboard - first row: Orders (N) | Wishlist | Cart (£X.XX) with dynamic values
     inline_keyboard_buttons = []
-    
-    # Always add wishlist, contact, and reviews buttons as the first row
+    user_id = str(message.from_user.id) if message.from_user else ""
+    bot_id = str(bot_config["_id"])
+    from utils.bottom_menu import get_menu_stats
+    order_count, cart_display = await get_menu_stats(user_id, bot_id)
     inline_keyboard_buttons.append([
-        InlineKeyboardButton(text="📝 Wishlist", callback_data="view_wishlist"),
+        InlineKeyboardButton(text=f"📦 Orders ({order_count})", callback_data="orders"),
+        InlineKeyboardButton(text="❤️ Wishlist", callback_data="view_wishlist"),
+        InlineKeyboardButton(text=f"🛒 {cart_display}", callback_data="view_cart"),
+    ])
+    # Second row: Contact, Reviews
+    inline_keyboard_buttons.append([
         InlineKeyboardButton(text="💬 Contact", callback_data="contact"),
         InlineKeyboardButton(text="⭐ Reviews", callback_data="view_all_reviews")
     ])
-    
-    if main_buttons and len(main_buttons) > 0:
-        # Always show all main buttons as inline buttons (2 per row)
-        for i in range(0, len(main_buttons), 2):
+    # Filter out Orders from main_buttons (we have it in row 1 with dynamic count)
+    main_buttons_filtered = [b for b in main_buttons if re.sub(r'[^\w\s]', '', str(b).lower()).strip() != "orders"]
+    if main_buttons_filtered and len(main_buttons_filtered) > 0:
+        for i in range(0, len(main_buttons_filtered), 2):
             button_row = []
-            # Create button for first item in row - strip emojis and special chars for callback_data
-            # Remove emojis and keep only alphanumeric and spaces
-            button_text_clean = re.sub(r'[^\w\s]', '', main_buttons[i])
+            button_text_clean = re.sub(r'[^\w\s]', '', main_buttons_filtered[i])
             callback_data_1 = re.sub(r'\s+', '_', button_text_clean.lower().strip())
             button_row.append(InlineKeyboardButton(
-                text=main_buttons[i], 
+                text=main_buttons_filtered[i], 
                 callback_data=callback_data_1
             ))
-            # Add second button if available
-            if i + 1 < len(main_buttons):
-                button_text_clean_2 = re.sub(r'[^\w\s]', '', main_buttons[i + 1])
+            if i + 1 < len(main_buttons_filtered):
+                button_text_clean_2 = re.sub(r'[^\w\s]', '', main_buttons_filtered[i + 1])
                 callback_data_2 = re.sub(r'\s+', '_', button_text_clean_2.lower().strip())
                 button_row.append(InlineKeyboardButton(
-                    text=main_buttons[i + 1], 
+                    text=main_buttons_filtered[i + 1], 
                     callback_data=callback_data_2
                 ))
             inline_keyboard_buttons.append(button_row)
     
-    # Always remove reply keyboard and show inline buttons
+    # Show inline menu
     if inline_keyboard_buttons:
         inline_keyboard = InlineKeyboardMarkup(inline_keyboard=inline_keyboard_buttons)
         await message.answer(menu_text, parse_mode="Markdown", reply_markup=ReplyKeyboardRemove())
-        # Send a separate message with inline buttons
         await message.answer("👇 Choose an option:", reply_markup=inline_keyboard)
     else:
-        # No active buttons configured, just show commands
         await message.answer(menu_text, parse_mode="Markdown", reply_markup=ReplyKeyboardRemove())
 
