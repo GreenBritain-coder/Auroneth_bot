@@ -320,14 +320,22 @@ async def show_product_quantity_interface(callback: CallbackQuery, product: dict
         wishlist_buttons.append(InlineKeyboardButton(text=f"{review_count} reviews for this product", callback_data=f"view_reviews:{product_id}"))
     keyboard_buttons.append(wishlist_buttons)
     
-    # Back buttons
+    # Back buttons - go to product list (subcategory or category)
     if actual_variation_index is not None:
         keyboard_buttons.append([
             InlineKeyboardButton(text="⬅️ Back", callback_data=f"product:{product_id}")
         ])
     else:
+        subcat_id = product.get('subcategory_id') or ''
+        cat_id = product.get('category_id') or ''
+        if subcat_id:
+            back_data = f"subcategory:{subcat_id}"
+        elif cat_id:
+            back_data = f"category:{cat_id}"
+        else:
+            back_data = "shop"
         keyboard_buttons.append([
-            InlineKeyboardButton(text="⬅️ Back", callback_data=f"subcategory:{product.get('subcategory_id')}")
+            InlineKeyboardButton(text="⬅️ Back", callback_data=back_data)
         ])
     keyboard_buttons.append([
         InlineKeyboardButton(text="📋 Back to Menu", callback_data="menu")
@@ -576,58 +584,23 @@ async def handle_category(callback: CallbackQuery):
             except Exception:
                 category = await db.categories.find_one({"_id": category_id})
             category_name = category.get("name", "Products") if category else "Products"
-            back_keyboard = InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="⬅️ Back to Categories", callback_data="shop")],
-                [InlineKeyboardButton(text="📋 Back to Menu", callback_data="menu")]
-            ])
+            # Show product list as buttons first (user selects one to see details)
+            product_buttons = [[InlineKeyboardButton(text=p["name"], callback_data=f"product:{p['_id']}")] for p in products]
+            product_buttons.append([InlineKeyboardButton(text="⬅️ Back to Categories", callback_data="shop")])
+            product_buttons.append([InlineKeyboardButton(text="📋 Back to Menu", callback_data="menu")])
+            list_keyboard = InlineKeyboardMarkup(inline_keyboard=product_buttons)
             try:
                 await callback.message.edit_text(
                     f"🛍️ *Products in {category_name}*\n\nSelect a product:",
                     parse_mode="Markdown",
-                    reply_markup=back_keyboard
+                    reply_markup=list_keyboard
                 )
             except Exception:
                 await callback.message.answer(
                     f"🛍️ *Products in {category_name}*\n\nSelect a product:",
                     parse_mode="Markdown",
-                    reply_markup=back_keyboard
+                    reply_markup=list_keyboard
                 )
-            for product in products:
-                try:
-                    base_price = product.get('base_price') or product.get('price', 0)
-                    product_text = f"🛍️ *{product['name']}*\n\n"
-                    product_text += f"{product.get('description', '')}\n\n"
-                    product_text += f"💰 Base Price: {base_price} {product['currency']}"
-                    if product.get("variations"):
-                        product_text += f"\n📦 Variations available"
-                    product_id_str = str(product['_id'])
-                    keyboard = InlineKeyboardMarkup(inline_keyboard=[[
-                        InlineKeyboardButton(text="🛒 Add to Cart", callback_data=f"add_cart:{product_id_str}"),
-                        InlineKeyboardButton(text="ℹ️ More Info", callback_data=f"product_info:{product_id_str}")
-                    ]])
-                    image_url = product.get("image_url") or ""
-                    if image_url and image_url.strip() and image_url.startswith("http"):
-                        await callback.message.answer_photo(
-                            photo=image_url,
-                            caption=product_text,
-                            parse_mode="Markdown",
-                            reply_markup=keyboard
-                        )
-                    elif image_url and image_url.strip() and image_url.startswith("data:"):
-                        img_file = await prepare_image_for_telegram(image_url)
-                        if img_file:
-                            await callback.message.answer_photo(
-                                photo=img_file,
-                                caption=product_text,
-                                parse_mode="Markdown",
-                                reply_markup=keyboard
-                            )
-                        else:
-                            await callback.message.answer(product_text, parse_mode="Markdown", reply_markup=keyboard)
-                    else:
-                        await callback.message.answer(product_text, parse_mode="Markdown", reply_markup=keyboard)
-                except Exception as e:
-                    print(f"Error sending product {product.get('name', '?')}: {e}")
             return
         try:
             await callback.message.edit_text("📁 No subcategories or products available in this category.")
@@ -736,83 +709,26 @@ async def handle_subcategory(callback: CallbackQuery):
         subcategory = await subcategory_collection.find_one({"_id": subcategory_id})
     subcategory_name = subcategory.get("name", "Products") if subcategory else "Products"
     
-    # Try to edit the message to show product list header (with back buttons)
-    back_keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="⬅️ Back to Categories", callback_data="shop")],
-        [InlineKeyboardButton(text="📋 Back to Menu", callback_data="menu")]
-    ])
+    # Show product list as buttons first (user selects one to see details)
+    product_buttons = [[InlineKeyboardButton(text=p["name"], callback_data=f"product:{p['_id']}")] for p in products]
+    parent_category_id = (subcategory or {}).get("category_id", "")
+    back_callback = f"category:{parent_category_id}" if parent_category_id else "shop"
+    back_text = "⬅️ Back to Subcategories" if parent_category_id else "⬅️ Back to Categories"
+    product_buttons.append([InlineKeyboardButton(text=back_text, callback_data=back_callback)])
+    product_buttons.append([InlineKeyboardButton(text="📋 Back to Menu", callback_data="menu")])
+    list_keyboard = InlineKeyboardMarkup(inline_keyboard=product_buttons)
     try:
         await callback.message.edit_text(
             f"🛍️ *Products in {subcategory_name}*\n\nSelect a product:",
             parse_mode="Markdown",
-            reply_markup=back_keyboard
+            reply_markup=list_keyboard
         )
     except Exception:
-        pass
-
-    # Send products as separate messages (one per product)
-    for product in products:
-        try:
-            base_price = product.get('base_price') or product.get('price', 0)
-            product_text = f"🛍️ *{product['name']}*\n\n"
-            product_text += f"{product.get('description', '')}\n\n"
-            product_text += f"💰 Base Price: {base_price} {product['currency']}"
-
-            if product.get("variations"):
-                product_text += f"\n📦 Variations available"
-
-            product_id_str = str(product['_id'])
-            keyboard = InlineKeyboardMarkup(inline_keyboard=[[
-                InlineKeyboardButton(
-                    text="Select Product",
-                    callback_data=f"product:{product_id_str}"
-                )
-            ]])
-
-            image_url = product.get("image_url")
-            image_file = await prepare_image_for_telegram(image_url) if image_url else None
-
-            if image_file:
-                try:
-                    await callback.message.answer_photo(
-                        photo=image_file,
-                        caption=product_text,
-                        parse_mode="Markdown",
-                        reply_markup=keyboard
-                    )
-                except Exception as e:
-                    print(f"Error sending product image (base64): {e}")
-                    await callback.message.answer(product_text, parse_mode="Markdown", reply_markup=keyboard)
-            elif image_url and image_url.strip():
-                try:
-                    await callback.message.answer_photo(
-                        photo=image_url,
-                        caption=product_text,
-                        parse_mode="Markdown",
-                        reply_markup=keyboard
-                    )
-                except Exception as e:
-                    print(f"Error sending product image (URL): {e}")
-                    await callback.message.answer(product_text, parse_mode="Markdown", reply_markup=keyboard)
-            else:
-                await callback.message.answer(product_text, parse_mode="Markdown", reply_markup=keyboard)
-        except Exception as e:
-            print(f"Error sending product {product.get('name', '?')}: {e}")
-    
-    # Note: Products are sent as separate messages (one per product), which is expected behavior
-    # The navigation messages (category/subcategory) should be edited, not products
-    category_collection = db.categories
-    if subcategory:
-        category = await category_collection.find_one({"_id": subcategory.get("category_id")})
-        if category:
-            back_keyboard = InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(
-                    text="⬅️ Back to Subcategories",
-                    callback_data=f"category:{category['_id']}"
-                )],
-                [InlineKeyboardButton(text="📋 Back to Menu", callback_data="menu")]
-            ])
-            await callback.message.answer("⬅️", reply_markup=back_keyboard)
+        await callback.message.answer(
+            f"🛍️ *Products in {subcategory_name}*\n\nSelect a product:",
+            parse_mode="Markdown",
+            reply_markup=list_keyboard
+        )
 
 
 @router.callback_query(F.data.startswith("product:"))
@@ -862,14 +778,22 @@ async def handle_product(callback: CallbackQuery):
         for idx, variation in enumerate(variations):
             variation_price = product['base_price'] + variation.get('price_modifier', 0)
             stock_info = f" (Stock: {variation.get('stock', '∞')})" if variation.get('stock') is not None else ""
-            keyboard_buttons.append([
-                InlineKeyboardButton(
-                    text=f"{variation['name']} - {variation_price} {product['currency']}{stock_info}",
-                    callback_data=f"variation:{product_id}:{idx}"
-                )
-            ])
         keyboard_buttons.append([
-            InlineKeyboardButton(text="⬅️ Back", callback_data=f"subcategory:{product.get('subcategory_id')}")
+            InlineKeyboardButton(
+                text=f"{variation['name']} - {variation_price} {product['currency']}{stock_info}",
+                callback_data=f"variation:{product_id}:{idx}"
+            )
+        ])
+        subcat_id = product.get('subcategory_id') or ''
+        cat_id = product.get('category_id') or ''
+        if subcat_id:
+            back_data = f"subcategory:{subcat_id}"
+        elif cat_id:
+            back_data = f"category:{cat_id}"
+        else:
+            back_data = "shop"
+        keyboard_buttons.append([
+            InlineKeyboardButton(text="⬅️ Back", callback_data=back_data)
         ])
         keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
         
