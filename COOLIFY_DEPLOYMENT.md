@@ -173,7 +173,51 @@ After deploy, the bot will listen on 8000; Coolify will route `https://bot.test.
 
 ---
 
-### 4. Multiple bots (optional)
+### 4. Deploy a bot for a new user
+
+To deploy a bot for a new user (vendor/bot owner):
+
+1. **User creates a bot in Telegram**
+   - User messages [@BotFather](https://t.me/BotFather)
+   - Sends `/newbot`, follows prompts, gets a **BOT_TOKEN**
+   - Notes the bot username (e.g. `@MyVendorBot`)
+
+2. **Create admin account for the user** (if they don't have one)
+   - Coolify → admin-panel → **Terminal** (or run locally with `MONGO_URI`):
+   ```bash
+   node scripts/create-admin.js their_username TheirPassword123! bot-owner
+   ```
+
+3. **User creates the bot in Admin Panel**
+   - User logs in at https://admin.test.greenbritain.club
+   - Goes to **Bots** → **Add New Bot**
+   - Fills in: Name, **Token** (from @BotFather), Telegram username, description
+   - Main Menu Buttons are prefilled (Shop, Support, Promotions, Orders)
+   - Sets **Webhook URL** to the domain where this bot will run (e.g. `https://bot2.test.greenbritain.club`)
+   - Saves
+
+4. **Deploy a new bot service instance in Coolify**
+   - **+ Add Resource** → **Application**
+   - **Name:** e.g. `telegram-bot-service-vendor2` (unique per bot)
+   - **Source:** Same repo, branch `main`
+   - **Build:** Dockerfile, **Base Directory** `telegram-bot-service`
+   - **Port:** 8001 (or 8002, 8003… — must be unique)
+   - **Environment Variables:** Copy from your first bot service, but set:
+     - `BOT_TOKEN` = the new user's token from @BotFather
+     - `PORT` = 8001 (match the port above)
+   - **Domains:** Add e.g. `bot2.test.greenbritain.club` (or user-specific subdomain), enable SSL
+   - **Deploy**
+
+5. **Set Telegram webhook**
+   - After deploy: `https://api.telegram.org/bot<TOKEN>/setWebhook?url=https://bot2.test.greenbritain.club/webhook`
+
+6. **Verify**
+   - User opens their bot in Telegram and sends `/start`
+   - Bot should respond with the configured welcome message
+
+---
+
+### 5. Multiple bots (reference)
 
 For a second bot, add another Application:
 
@@ -185,7 +229,7 @@ For a second bot, add another Application:
 
 ---
 
-### 5. Checklist
+### 6. Checklist
 
 - [ ] MongoDB reachable from all three apps (check firewall / Coolify network).
 - [ ] Front page: https://test.greenbritain.club loads.
@@ -196,7 +240,7 @@ For a second bot, add another Application:
 
 ---
 
-### 6. Migrate local data to Coolify MongoDB
+### 7. Migrate local data to Coolify MongoDB
 
 If you have data in your local MongoDB (`mongodb://localhost:27017/telegram_bot_platform`) and want to move it to the Coolify database, use `mongodump` and `mongorestore`.
 
