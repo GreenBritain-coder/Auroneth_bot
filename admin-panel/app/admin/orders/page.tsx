@@ -25,6 +25,7 @@ export default function OrdersPage() {
   const [addressErrors, setAddressErrors] = useState<Record<string, string>>({});
   const [secretPhraseInputs, setSecretPhraseInputs] = useState<Record<string, string>>({});
   const [showSecretPhraseInput, setShowSecretPhraseInput] = useState<Record<string, boolean>>({});
+  const [confirmingOrderId, setConfirmingOrderId] = useState<string | null>(null);
 
   useEffect(() => {
     fetchOrders();
@@ -56,6 +57,28 @@ export default function OrdersPage() {
         return 'bg-red-100 text-red-800';
       default:
         return 'bg-gray-100 text-gray-800';
+    }
+  };
+
+  const confirmPayment = async (orderId: string) => {
+    if (!confirm('Mark this order as paid? Only do this if you have verified the payment.')) {
+      return;
+    }
+    setConfirmingOrderId(orderId);
+    try {
+      const response = await fetch(`/api/orders/${orderId}/confirm`, { method: 'POST' });
+      const data = await response.json();
+      if (response.ok && data.success) {
+        setOrders(prev =>
+          prev.map(o => (o._id === orderId ? { ...o, paymentStatus: 'paid' } : o))
+        );
+      } else {
+        alert(data.error || 'Failed to confirm order');
+      }
+    } catch (err) {
+      alert('Network error');
+    } finally {
+      setConfirmingOrderId(null);
     }
   };
 
@@ -242,13 +265,24 @@ export default function OrdersPage() {
                       {order.commission ? order.commission.toFixed(8) : '0.00000000'}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <span
-                        className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(
-                          order.paymentStatus || 'unknown'
-                        )}`}
-                      >
-                        {order.paymentStatus || 'unknown'}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <span
+                          className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(
+                            order.paymentStatus || 'unknown'
+                          )}`}
+                        >
+                          {order.paymentStatus || 'unknown'}
+                        </span>
+                        {(order.paymentStatus === 'pending' || !order.paymentStatus) && orderId && (
+                          <button
+                            onClick={() => confirmPayment(orderId)}
+                            disabled={confirmingOrderId === orderId}
+                            className="text-xs font-medium text-indigo-600 hover:text-indigo-900 disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            {confirmingOrderId === orderId ? 'Confirming...' : 'Confirm'}
+                          </button>
+                        )}
+                      </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                       {order.timestamp ? new Date(order.timestamp).toLocaleDateString() : 'N/A'}
