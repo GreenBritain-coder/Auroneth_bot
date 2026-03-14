@@ -167,7 +167,7 @@ export default function OrdersPage() {
     .reduce((sum, o) => sum + o.commission, 0);
 
   return (
-    <div>
+    <div className="w-full min-w-0">
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold text-gray-900">Orders & Commissions</h1>
         <div className="bg-indigo-50 px-4 py-2 rounded-md">
@@ -182,9 +182,8 @@ export default function OrdersPage() {
         </div>
       )}
 
-      <div className="bg-white shadow overflow-hidden sm:rounded-md">
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
+      <div className="bg-white shadow rounded-md overflow-x-auto">
+        <table className="min-w-full min-w-[1100px] divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -434,7 +433,6 @@ export default function OrdersPage() {
                 ))}
             </tbody>
           </table>
-        </div>
       </div>
 
       {orders.length === 0 && !loading && (
