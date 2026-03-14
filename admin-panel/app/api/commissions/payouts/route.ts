@@ -3,6 +3,8 @@ import connectDB from '../../../../lib/db';
 import { CommissionPayout, Admin } from '../../../../lib/models';
 import { getTokenFromRequest, verifyToken } from '../../../../lib/auth';
 
+export const dynamic = 'force-dynamic';
+
 // GET: Get payout history for the logged-in user (or all for super-admin)
 export async function GET(request: NextRequest) {
   try {

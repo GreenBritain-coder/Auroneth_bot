@@ -13,8 +13,6 @@ RUN npm ci
 # Rebuild the source code only when needed
 FROM base AS builder
 WORKDIR /app
-# Keep development for npm run build (needs typescript etc.)
-ENV NODE_ENV=development
 COPY --from=deps /app/node_modules ./node_modules
 # CACHEBUST: pass --build-arg CACHEBUST=$(date +%s) to force full rebuild (e.g. in Coolify Build Args)
 ARG CACHEBUST=1
@@ -26,6 +24,8 @@ COPY . .
 # Uncomment the following line in case you want to disable telemetry during the build.
 ENV NEXT_TELEMETRY_DISABLED 1
 
+# Use production for next build - avoids "non-standard NODE_ENV" and Html import false errors
+ENV NODE_ENV=production
 RUN npm run build
 
 # Production image, copy all the files and run next

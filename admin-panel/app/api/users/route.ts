@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '../../../lib/db';
+
+export const dynamic = 'force-dynamic';
 import { User } from '../../../lib/models';
 import { getTokenFromRequest, verifyToken } from '../../../lib/auth';
 
