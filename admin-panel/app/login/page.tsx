@@ -109,11 +109,12 @@ export default function LoginPage() {
               {loading ? 'Logging in...' : 'Sign in'}
             </button>
           </div>
-          {error && (
-            <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 text-yellow-800 rounded text-sm">
-              <strong>Debug Info:</strong> Open browser console (F12) and check for "Login response:" message
-            </div>
-          )}
+          <p className="text-center text-sm text-gray-500">
+            First time?{' '}
+            <a href="/setup" className="text-indigo-600 hover:text-indigo-500">
+              Create admin user
+            </a>
+          </p>
         </form>
       </div>
     </div>
