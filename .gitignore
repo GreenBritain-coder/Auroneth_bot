@@ -1,3 +1,6 @@
+# Migration export (contains DB data)
+mongo_export.json
+
 # Environment and secrets (never commit)
 .env
 .env.local
