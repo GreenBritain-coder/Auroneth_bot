@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
-import connectDB from '@/lib/db';
-import { Bot } from '@/lib/models';
+import connectDB from '../../../lib/db';
+import { Bot } from '../../../lib/models';
 
 export async function GET() {
   try {
