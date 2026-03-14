@@ -151,7 +151,7 @@ async def handle_contact_start(message: Message, state: FSMContext, user_id: str
     
     contact_message += "Type your message below:"
     
-    # Create keyboard with PGP key and close buttons
+    # Create keyboard with PGP key, close, and back to menu buttons
     keyboard_buttons = []
     
     # Add PGP key button if available
@@ -159,7 +159,10 @@ async def handle_contact_start(message: Message, state: FSMContext, user_id: str
     if vendor_pgp_key:
         keyboard_buttons.append([InlineKeyboardButton(text="🔐 Vendor PGP Key", callback_data="contact_pgp_key")])
     
-    keyboard_buttons.append([InlineKeyboardButton(text="❌ Close Chat", callback_data="contact_close")])
+    keyboard_buttons.append([
+        InlineKeyboardButton(text="❌ Close Chat", callback_data="contact_close"),
+        InlineKeyboardButton(text="📋 Back to Menu", callback_data="menu")
+    ])
     
     keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
     

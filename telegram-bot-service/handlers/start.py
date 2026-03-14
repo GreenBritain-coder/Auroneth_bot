@@ -387,9 +387,10 @@ async def show_welcome_message(message: Message, bot_config: dict, secret_phrase
 
 
 @router.callback_query(F.data == "menu")
-async def handle_menu_callback(callback: CallbackQuery):
-    """Handle menu button click from welcome message - edit message to show menu directly"""
+async def handle_menu_callback(callback: CallbackQuery, state: FSMContext):
+    """Handle menu button click - edit message to show menu directly"""
     await safe_answer_callback(callback)
+    await state.clear()  # Clear any FSM state (e.g. contact waiting_for_message)
     
     bot_config = await get_bot_config()
     if not bot_config:
