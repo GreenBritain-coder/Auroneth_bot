@@ -3,6 +3,8 @@ import connectDB from '../../../lib/db';
 import { Bot, Product } from '../../../lib/models';
 import { getTokenFromRequest, verifyToken } from '../../../lib/auth';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(request: NextRequest) {
   try {
     const token = getTokenFromRequest(request);
@@ -47,7 +49,9 @@ export async function GET(request: NextRequest) {
       products: Array(productCounts[bot._id.toString()] || 0).fill('') // Keep products array for backward compatibility, but with correct count
     }));
     
-    return NextResponse.json(botsWithProductCounts);
+    return NextResponse.json(botsWithProductCounts, {
+      headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate' },
+    });
   } catch (error) {
     console.error('Error fetching bots:', error);
     return NextResponse.json(

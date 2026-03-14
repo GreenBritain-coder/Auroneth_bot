@@ -131,6 +131,75 @@ For a second bot, add another Application:
 
 ---
 
+### 6. Migrate local data to Coolify MongoDB
+
+If you have data in your local MongoDB (`mongodb://localhost:27017/telegram_bot_platform`) and want to move it to the Coolify database, use `mongodump` and `mongorestore`.
+
+**Prerequisites:** Install [MongoDB Database Tools](https://www.mongodb.com/docs/database-tools/installation/installation/) (includes `mongodump` and `mongorestore`).
+
+**Step 1 – Dump from local**
+
+```bash
+mongodump --uri="mongodb://localhost:27017/telegram_bot_platform" --out=./mongo-backup
+```
+
+This creates a `./mongo-backup/telegram_bot_platform` folder with all collections (bots, categories, subcategories, products, orders, invoices, users, admins, etc.).
+
+**Step 2 – Restore to Coolify MongoDB**
+
+Replace `YOUR_PASSWORD` and `YOUR_HOST` with your Coolify MongoDB credentials and host (e.g. `thj2moj8ktvpq0cr7wupi88q` or your server IP):
+
+```bash
+mongorestore --uri="mongodb://root:YOUR_PASSWORD@YOUR_HOST:27017/telegram_bot_platform?authSource=admin&directConnection=true" ./mongo-backup/telegram_bot_platform
+```
+
+**Network access:** The Coolify MongoDB must accept connections from your machine. If it’s on the same server as Coolify:
+
+- Use the server’s IP or hostname.
+- Ensure port 27017 is open in the firewall (or use an SSH tunnel).
+
+**SSH tunnel (if MongoDB is not directly reachable):**
+
+```bash
+# In one terminal, create tunnel (replace USER, SERVER, LOCAL_PORT)
+ssh -L 27018:localhost:27017 USER@YOUR_SERVER
+
+# In another terminal, restore via localhost
+mongorestore --uri="mongodb://root:YOUR_PASSWORD@localhost:27018/telegram_bot_platform?authSource=admin" ./mongo-backup/telegram_bot_platform
+```
+
+**Alternative: Export + Import API (when MongoDB port is not reachable)**
+
+If you cannot reach MongoDB directly (firewall, internal Docker hostname), use the export/import flow:
+
+1. **Export locally:**
+   ```bash
+   cd telegram-bot-service
+   python scripts/export_mongo_to_json.py --output mongo_export.json
+   ```
+
+2. **Redeploy admin-panel** in Coolify (to get the `/api/migrate-import` endpoint).
+
+3. **Import via API** (replace `YOUR_JWT_SECRET` with your Coolify admin panel `JWT_SECRET`):
+   ```powershell
+   cd telegram-bot-service
+   Invoke-RestMethod -Uri "https://admin.test.greenbritain.club/api/migrate-import" -Method POST -Headers @{"x-migrate-secret"="YOUR_JWT_SECRET"; "Content-Type"="application/json"} -Body (Get-Content mongo_export.json -Raw -Encoding UTF8)
+   ```
+
+**Important:** All three apps (front-page, admin-panel, telegram-bot-service) must use the **exact same** `MONGO_URI` in Coolify. If the front-page or admin panel use a different database, they will show different data.
+
+**After migration:**
+
+- Your migrated admin user can log in at `https://admin.test.greenbritain.club` with the same username/password.
+- Bots, products, categories, orders, etc. will be available in the admin panel and to the bot service.
+- If the Coolify DB already had data, `mongorestore` will merge/overwrite by default; use `--drop` to replace the database entirely (destructive):
+
+  ```bash
+  mongorestore --uri="..." --drop ./mongo-backup/telegram_bot_platform
+  ```
+
+---
+
 ## Domain (test.greenbritain.club)
 
 | Service      | URL                              | Purpose              |

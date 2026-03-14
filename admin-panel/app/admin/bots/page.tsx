@@ -41,7 +41,7 @@ export default function BotsPage() {
 
   const fetchBots = async () => {
     try {
-      const response = await fetch('/api/bots');
+      const response = await fetch('/api/bots?t=' + Date.now());
       if (response.ok) {
         const data = await response.json();
         setBots(data);

@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import connectDB from '../../../lib/db';
 import { Bot } from '../../../lib/models';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET() {
   try {
     await connectDB();
@@ -24,7 +26,9 @@ export async function GET() {
       return a.name.localeCompare(b.name);
     });
 
-    return NextResponse.json(sortedBots);
+    return NextResponse.json(sortedBots, {
+      headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate' },
+    });
   } catch (error) {
     console.error('Error fetching bots:', error);
     return NextResponse.json(
