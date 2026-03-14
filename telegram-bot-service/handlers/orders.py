@@ -57,10 +57,13 @@ async def show_user_orders(message_or_callback: Union[Message, CallbackQuery]):
     
     user_id = str(user.id)
     
-    # Helper function to send messages
+    # Helper: when from callback, edit message in place (stay in same menu); otherwise send new message
     async def send_message(text, **kwargs):
         if isinstance(message_or_callback, CallbackQuery):
-            await bot.send_message(chat_id=message.chat.id, text=text, **kwargs)
+            try:
+                await message.edit_text(text, **kwargs)
+            except Exception:
+                await message.answer(text, **kwargs)
         else:
             await message.answer(text, **kwargs)
     

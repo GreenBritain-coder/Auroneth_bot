@@ -443,22 +443,12 @@ async def handle_shop_start(callback: CallbackQuery):
                 await callback.message.answer("❌ Bot configuration not found.")
         return
     
-    # Check for custom shop message before showing categories
+    # Check for custom shop message - include in edit to stay in same message
     messages = bot_config.get("messages", {})
     custom_message = messages.get("shop", "")
+    shop_header = "📦 *Select a Category*"
     if custom_message and custom_message.strip():
-        print(f"[SHOP HANDLER] Found custom message: '{custom_message[:50]}...'")
-        try:
-            # Try Markdown first, fallback to plain text
-            try:
-                await callback.message.answer(custom_message, parse_mode="Markdown")
-                print(f"[SHOP HANDLER] Custom message sent successfully")
-            except Exception as md_error:
-                print(f"[SHOP HANDLER] Markdown failed, trying plain text: {md_error}")
-                await callback.message.answer(custom_message)
-                print(f"[SHOP HANDLER] Custom message sent as plain text")
-        except Exception as e:
-            print(f"[SHOP HANDLER] ERROR sending custom message: {e}")
+        shop_header = custom_message.strip() + "\n\n" + shop_header
     
     bot_id = str(bot_config["_id"])
     db = get_database()
@@ -492,28 +482,25 @@ async def handle_shop_start(callback: CallbackQuery):
     # Check if this is a fake callback (from menu button) or real callback (from inline button)
     is_fake = getattr(callback, 'id', None) is None
     
+    no_categories_text = "📦 No categories available at the moment."
     if not categories:
         if is_fake:
-            await callback.message.answer("📦 No categories available at the moment.")
+            await callback.message.answer(no_categories_text)
         else:
             try:
-                await callback.message.edit_text("📦 No categories available at the moment.")
-            except:
-                await callback.message.answer("📦 No categories available at the moment.")
+                await callback.message.edit_text(no_categories_text)
+            except Exception:
+                await callback.message.answer(no_categories_text)
         return
     
     if is_fake:
-        # For fake callbacks (regular messages), just send a new message
-        await callback.message.answer("📦 *Select a Category*", parse_mode="Markdown", reply_markup=keyboard)
+        await callback.message.answer(shop_header, parse_mode="Markdown", reply_markup=keyboard)
     else:
-        # For real callbacks, try to edit the message
         try:
-            await callback.message.edit_text("📦 *Select a Category*", parse_mode="Markdown", reply_markup=keyboard)
+            await callback.message.edit_text(shop_header, parse_mode="Markdown", reply_markup=keyboard)
         except Exception as e:
-            # If edit fails, send a new message instead
-            error_msg = str(e)
-            print(f"Edit failed: {error_msg}")
-            await callback.message.answer("📦 *Select a Category*", parse_mode="Markdown", reply_markup=keyboard)
+            print(f"[Shop] Edit failed: {e}")
+            await callback.message.answer(shop_header, parse_mode="Markdown", reply_markup=keyboard)
 
 
 @router.callback_query(F.data.startswith("category:"))
@@ -1243,7 +1230,13 @@ async def handle_view_wishlist(callback: CallbackQuery):
     })
     
     if not wishlist or not wishlist.get("items"):
-        await callback.message.answer("📝 Your wishlist is empty.")
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="📋 Back to Menu", callback_data="menu")]
+        ])
+        try:
+            await callback.message.edit_text("📝 Your wishlist is empty.", reply_markup=keyboard)
+        except Exception:
+            await callback.message.answer("📝 Your wishlist is empty.", reply_markup=keyboard)
         return
     
     wishlist_text = "📝 *Your Wishlist*\n\n"
@@ -1300,7 +1293,8 @@ async def handle_view_wishlist(callback: CallbackQuery):
             ])
     
     keyboard_buttons.append([
-        InlineKeyboardButton(text="🛍️ Continue Shopping", callback_data="shop")
+        InlineKeyboardButton(text="🛍️ Continue Shopping", callback_data="shop"),
+        InlineKeyboardButton(text="📋 Back to Menu", callback_data="menu")
     ])
     
     keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
@@ -1908,7 +1902,10 @@ async def handle_view_cart(callback: CallbackQuery):
             [InlineKeyboardButton(text="🛍️ Continue Shopping", callback_data="shop")],
             [InlineKeyboardButton(text="📋 Back to Menu", callback_data="menu")]
         ])
-        await callback.message.answer("🛒 Your cart is empty.", reply_markup=keyboard)
+        try:
+            await callback.message.edit_text("🛒 Your cart is empty.", reply_markup=keyboard)
+        except Exception:
+            await callback.message.answer("🛒 Your cart is empty.", reply_markup=keyboard)
         return
     
     # Build cart message

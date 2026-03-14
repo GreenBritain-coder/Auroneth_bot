@@ -119,36 +119,11 @@ async def handle_menu_inline_button(callback: CallbackQuery, state: FSMContext):
     print(f"[MENU INLINE] Custom message found: {bool(custom_message)}")
     
     if action == "shop":
-        # Show custom message if configured, then shop
-        print(f"[MENU INLINE SHOP] Custom message retrieved: {bool(custom_message)}")
-        if custom_message and custom_message.strip():
-            print(f"[MENU INLINE SHOP] Message content: '{custom_message}'")
-            print(f"[MENU INLINE SHOP] Message length: {len(custom_message)}")
-            try:
-                print(f"[MENU INLINE SHOP] Attempting to send message...")
-                # Try sending with Markdown first, fallback to plain text if it fails
-                try:
-                    await callback.message.answer(custom_message, parse_mode="Markdown")
-                    print(f"[MENU INLINE SHOP] Message sent successfully with Markdown")
-                except Exception as md_error:
-                    print(f"[MENU INLINE SHOP] Markdown failed ({md_error}), trying plain text...")
-                    await callback.message.answer(custom_message)
-                    print(f"[MENU INLINE SHOP] Message sent successfully as plain text")
-            except Exception as e:
-                print(f"[MENU INLINE SHOP] ERROR sending message: {e}")
-                import traceback
-                traceback.print_exc()
-        else:
-            print(f"[MENU INLINE SHOP] No custom message found or message is empty")
-        # Edit the menu message to show shop categories directly
-        print(f"[MENU INLINE SHOP] Calling handle_shop_start...")
+        # Edit menu message to show shop categories (stay in same message)
         await shop.handle_shop_start(callback)
         return
     elif action == "orders" or "history" in action or "pending" in action:
-        # Show custom message if configured, then orders
-        if custom_message:
-            await callback.message.answer(custom_message, parse_mode="Markdown")
-        # Show orders - pass the callback directly
+        # Show orders (edit menu in place, stay in same message)
         print(f"[Menu Inline Debug] Orders button clicked - callback.from_user.id: {callback.from_user.id}")
         try:
             from handlers.orders import show_user_orders
@@ -247,18 +222,17 @@ async def handle_menu_inline_button(callback: CallbackQuery, state: FSMContext):
         if not promo_message or not promo_message.strip():
             promo_message = "🎟️ *Discounts & Promotions*\n\nCheck out our current discounts and promotions! Use discount codes during checkout to save money."
         
-        # Send the message directly (don't update menu)
+        # Replace menu with discounts view (stay in same message)
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="📋 Back to Menu", callback_data="menu")]
+        ])
         try:
-            await callback.message.answer(promo_message, parse_mode="Markdown")
-        except Exception as e:
-            # If Markdown parsing fails, try without parse_mode
+            await callback.message.edit_text(promo_message, parse_mode="Markdown", reply_markup=keyboard)
+        except Exception:
             try:
-                await callback.message.answer(promo_message)
-            except Exception as e2:
-                # Last resort: send a simple text message
-                await callback.message.answer("🎟️ Discounts & Promotions\n\nCheck out our current discounts and promotions!")
-        
-        await safe_answer_callback(callback)  # Acknowledge the button press
+                await callback.message.edit_text(promo_message, reply_markup=keyboard)
+            except Exception:
+                await callback.message.answer(promo_message, parse_mode="Markdown", reply_markup=keyboard)
         return
     elif "bag" in action:
         # Redirect to cart
@@ -271,24 +245,15 @@ async def handle_menu_inline_button(callback: CallbackQuery, state: FSMContext):
         # Generic action - use custom message if found, otherwise default
         response_text = custom_message.strip() if custom_message and custom_message.strip() else f"Selected: {action}"
     
-    # Update the menu message with new content
-    if inline_keyboard_buttons:
-        inline_keyboard = InlineKeyboardMarkup(inline_keyboard=inline_keyboard_buttons)
+    # Update the menu message with new content + Back to Menu (stay in same message)
+    back_to_menu_keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="📋 Back to Menu", callback_data="menu")]
+    ])
+    try:
+        await callback.message.edit_text(response_text, parse_mode="Markdown", reply_markup=back_to_menu_keyboard)
+    except Exception:
         try:
-            await callback.message.edit_text(response_text, parse_mode="Markdown", reply_markup=inline_keyboard)
-        except Exception as e:
-            # If Markdown parsing fails, try without parse_mode
-            try:
-                await callback.message.edit_text(response_text, reply_markup=inline_keyboard)
-            except:
-                await callback.message.answer(response_text, reply_markup=inline_keyboard)
-    else:
-        try:
-            await callback.message.edit_text(response_text, parse_mode="Markdown")
-        except Exception as e:
-            # If Markdown parsing fails, try without parse_mode
-            try:
-                await callback.message.edit_text(response_text)
-            except:
-                await callback.message.answer(response_text)
+            await callback.message.edit_text(response_text, reply_markup=back_to_menu_keyboard)
+        except Exception:
+            await callback.message.answer(response_text, reply_markup=back_to_menu_keyboard)
 

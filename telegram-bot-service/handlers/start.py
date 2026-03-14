@@ -479,15 +479,15 @@ async def handle_menu_callback(callback: CallbackQuery):
 
 @router.callback_query(F.data == "about")
 async def handle_about_callback(callback: CallbackQuery):
-    """Handle About button - show vendor/bot info"""
+    """Handle About button - show vendor/bot info (replace menu, stay in same message)"""
     await safe_answer_callback(callback)
     
     bot_config = await get_bot_config()
     if not bot_config:
         try:
-            await callback.message.answer("❌ Bot configuration not found.")
+            await callback.message.edit_text("❌ Bot configuration not found.")
         except:
-            pass
+            await callback.message.answer("❌ Bot configuration not found.")
         return
     
     # Prefer custom "about" message, then bot description
@@ -496,13 +496,16 @@ async def handle_about_callback(callback: CallbackQuery):
     if not about_text:
         about_text = "ℹ️ About\n\nWelcome! This is a secure marketplace. Browse products, place orders, and contact the vendor through the Contact button."
     
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="📋 Back to Menu", callback_data="menu")]
+    ])
     try:
-        await callback.message.answer(about_text, parse_mode="Markdown")
+        await callback.message.edit_text(about_text, parse_mode="Markdown", reply_markup=keyboard)
     except Exception:
         try:
-            await callback.message.answer(about_text)
+            await callback.message.edit_text(about_text, reply_markup=keyboard)
         except Exception:
-            await callback.message.answer("ℹ️ About\n\nWelcome! Browse products and use the Contact button for support.")
+            await callback.message.answer(about_text, reply_markup=keyboard)
 
 
 @router.message(Command("refresh"))
