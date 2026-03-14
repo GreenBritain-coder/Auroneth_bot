@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import connectDB from '../../lib/db';
-import { Category, Subcategory, Product, Order } from '../../lib/models';
-import { getTokenFromRequest, verifyToken } from '../../lib/auth';
+import connectDB from '../../../lib/db';
+import { Category, Subcategory, Product, Order } from '../../../lib/models';
+import { getTokenFromRequest, verifyToken } from '../../../lib/auth';
 
 export async function GET(request: NextRequest) {
   try {
@@ -22,7 +22,7 @@ export async function GET(request: NextRequest) {
     if (payload.role === 'super-admin') {
       categories = await Category.find({}).sort({ order: 1 }).lean();
     } else {
-      const { Bot } = await import('../../lib/models');
+      const { Bot } = await import('../../../lib/models');
       const userBots = await Bot.find({ owner: payload.userId });
       const userBotIds = userBots.map(b => b._id.toString());
       
@@ -238,7 +238,7 @@ export async function POST(request: NextRequest) {
     // Bot-owners can only assign categories to their own bots
     let bot_ids = data.bot_ids || [];
     if (payload.role !== 'super-admin' && bot_ids.length > 0) {
-      const { Bot } = await import('../../lib/models');
+      const { Bot } = await import('../../../lib/models');
       const userBots = await Bot.find({ owner: payload.userId });
       const userBotIds = userBots.map(b => b._id.toString());
       

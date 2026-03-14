@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import connectDB from '../../lib/db';
-import { ContactMessage } from '../../lib/models';
-import { getTokenFromRequest, verifyToken } from '../../lib/auth';
+import connectDB from '../../../lib/db';
+import { ContactMessage } from '../../../lib/models';
+import { getTokenFromRequest, verifyToken } from '../../../lib/auth';
 
 export async function GET(request: NextRequest) {
   try {
@@ -114,7 +114,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Get bot token from database
-    const { Bot } = await import('../../lib/models');
+    const { Bot } = await import('../../../lib/models');
     const bot = await Bot.findById(botId);
     if (!bot) {
       return NextResponse.json({ error: 'Bot not found' }, { status: 404 });

@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import connectDB from '../../../../lib/db';
-import { CommissionPayout } from '../../../../lib/models';
-import { getTokenFromRequest, verifyToken } from '../../../../lib/auth';
-import { processOnePayout } from '../../../../lib/processPayout';
+import connectDB from '../../../../../lib/db';
+import { CommissionPayout } from '../../../../../lib/models';
+import { getTokenFromRequest, verifyToken } from '../../../../../lib/auth';
+import { processOnePayout } from '../../../../../lib/processPayout';
 
 /**
  * POST: Process all approved payouts (batch).

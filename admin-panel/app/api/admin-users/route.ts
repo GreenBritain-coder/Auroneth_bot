@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import connectDB from '../../lib/db';
-import { Admin } from '../../lib/models';
+import connectDB from '../../../lib/db';
+import { Admin } from '../../../lib/models';
 import bcrypt from 'bcryptjs';
-import { getTokenFromRequest, verifyToken } from '../../lib/auth';
+import { getTokenFromRequest, verifyToken } from '../../../lib/auth';
 
 // GET - List all admin users (super-admin only)
 export async function GET(request: NextRequest) {

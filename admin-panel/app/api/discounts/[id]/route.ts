@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import connectDB from '../../../lib/db';
-import { Discount } from '../../../lib/models';
-import { getTokenFromRequest, verifyToken } from '../../../lib/auth';
+import connectDB from '../../../../lib/db';
+import { Discount } from '../../../../lib/models';
+import { getTokenFromRequest, verifyToken } from '../../../../lib/auth';
 
 export async function GET(
   request: NextRequest,
@@ -27,7 +27,7 @@ export async function GET(
 
     // Check if user has access to this discount
     if (payload.role !== 'super-admin') {
-      const { Bot } = await import('../../../lib/models');
+      const { Bot } = await import('../../../../lib/models');
       const userBots = await Bot.find({ owner: payload.userId });
       const userBotIds = userBots.map(b => b._id.toString());
       
@@ -73,7 +73,7 @@ export async function PUT(
 
     // Check if user has access to this discount
     if (payload.role !== 'super-admin') {
-      const { Bot } = await import('../../../lib/models');
+      const { Bot } = await import('../../../../lib/models');
       const userBots = await Bot.find({ owner: payload.userId });
       const userBotIds = userBots.map(b => b._id.toString());
       
@@ -101,7 +101,7 @@ export async function PUT(
     // Bot-owners can only assign discounts to their own bots
     let bot_ids = data.bot_ids !== undefined ? data.bot_ids : discount.bot_ids;
     if (payload.role !== 'super-admin' && bot_ids.length > 0) {
-      const { Bot } = await import('../../../lib/models');
+      const { Bot } = await import('../../../../lib/models');
       const userBots = await Bot.find({ owner: payload.userId });
       const userBotIds = userBots.map(b => b._id.toString());
       
@@ -156,7 +156,7 @@ export async function DELETE(
 
     // Check if user has access to this discount
     if (payload.role !== 'super-admin') {
-      const { Bot } = await import('../../../lib/models');
+      const { Bot } = await import('../../../../lib/models');
       const userBots = await Bot.find({ owner: payload.userId });
       const userBotIds = userBots.map(b => b._id.toString());
       

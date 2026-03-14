@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import connectDB from '../../../lib/db';
-import { Product } from '../../../lib/models';
-import { getTokenFromRequest, verifyToken } from '../../../lib/auth';
+import connectDB from '../../../../lib/db';
+import { Product } from '../../../../lib/models';
+import { getTokenFromRequest, verifyToken } from '../../../../lib/auth';
 
 export async function GET(
   request: NextRequest,
@@ -27,7 +27,7 @@ export async function GET(
 
     // Check ownership: super-admins can access any product, bot-owners only products for their bots
     if (payload.role !== 'super-admin') {
-      const { Bot } = await import('../../../lib/models');
+      const { Bot } = await import('../../../../lib/models');
       const userBots = await Bot.find({ owner: payload.userId });
       const userBotIds = userBots.map(b => b._id.toString());
       
@@ -75,7 +75,7 @@ export async function PATCH(
     const data = await request.json();
 
     if (payload.role !== 'super-admin') {
-      const { Bot } = await import('../../../lib/models');
+      const { Bot } = await import('../../../../lib/models');
       const userBots = await Bot.find({ owner: payload.userId });
       const userBotIds = userBots.map(b => b._id.toString());
       
@@ -131,7 +131,7 @@ export async function DELETE(
     }
 
     if (payload.role !== 'super-admin') {
-      const { Bot } = await import('../../../lib/models');
+      const { Bot } = await import('../../../../lib/models');
       const userBots = await Bot.find({ owner: payload.userId });
       const userBotIds = userBots.map(b => b._id.toString());
       

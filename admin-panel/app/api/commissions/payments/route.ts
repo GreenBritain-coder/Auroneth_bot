@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import connectDB from '../../../lib/db';
-import { CommissionPayment, Bot } from '../../../lib/models';
-import { getTokenFromRequest, verifyToken } from '../../../lib/auth';
+import connectDB from '../../../../lib/db';
+import { CommissionPayment, Bot } from '../../../../lib/models';
+import { getTokenFromRequest, verifyToken } from '../../../../lib/auth';
 
 // POST: Mark commission as paid (super-admin only)
 export async function POST(request: NextRequest) {

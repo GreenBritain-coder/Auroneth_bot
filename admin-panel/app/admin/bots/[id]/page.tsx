@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { CATEGORIES, getEmojisFromValues, getValuesFromEmojis } from '../../../lib/categories';
+import { CATEGORIES, getEmojisFromValues, getValuesFromEmojis } from '../../../../lib/categories';
 
 export default function EditBotPage() {
   const router = useRouter();

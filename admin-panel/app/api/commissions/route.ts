@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import connectDB from '../../lib/db';
-import { Order, Bot, CommissionPayout } from '../../lib/models';
-import { getTokenFromRequest, verifyToken } from '../../lib/auth';
-import { processOnePayout } from '../../lib/processPayout';
+import connectDB from '../../../lib/db';
+import { Order, Bot, CommissionPayout } from '../../../lib/models';
+import { getTokenFromRequest, verifyToken } from '../../../lib/auth';
+import { processOnePayout } from '../../../lib/processPayout';
 
 // GET: Get earnings summary for the logged-in user (bot owners earn order amount - commission)
 export async function GET(request: NextRequest) {
@@ -88,7 +88,7 @@ export async function GET(request: NextRequest) {
       });
 
       // Get all pending payout requests (bot owner payouts)
-      const { CommissionPayout } = await import('../../lib/models');
+      const { CommissionPayout } = await import('../../../lib/models');
       const allPendingPayouts = await CommissionPayout.find({
         status: 'pending'
       }).lean();
@@ -148,7 +148,7 @@ export async function GET(request: NextRequest) {
       });
 
       // Get pending payout requests grouped by currency
-      const { CommissionPayout } = await import('../../lib/models');
+      const { CommissionPayout } = await import('../../../lib/models');
       const pendingPayouts = await CommissionPayout.find({
         userId: payload.userId,
         status: 'pending'
@@ -261,7 +261,7 @@ export async function POST(request: NextRequest) {
     });
 
     // Get pending + approved (not yet paid) payout requests for balance calculation
-    const { CommissionPayout } = await import('../../lib/models');
+    const { CommissionPayout } = await import('../../../lib/models');
     const pendingPayouts = await CommissionPayout.find({
       userId: payload.userId,
       status: { $in: ['pending', 'approved'] },

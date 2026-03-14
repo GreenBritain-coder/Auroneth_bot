@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import connectDB from '../../../lib/db';
-import { Admin, IAdmin } from '../../../lib/models';
+import connectDB from '../../../../lib/db';
+import { Admin, IAdmin } from '../../../../lib/models';
 import bcrypt from 'bcryptjs';
-import { generateToken } from '../../../lib/auth';
+import { generateToken } from '../../../../lib/auth';
 
 export async function POST(request: NextRequest) {
   try {

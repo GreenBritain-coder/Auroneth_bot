@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import connectDB from '../../../lib/db';
-import { Bot } from '../../../lib/models';
-import { getTokenFromRequest, verifyToken } from '../../../lib/auth';
+import connectDB from '../../../../lib/db';
+import { Bot } from '../../../../lib/models';
+import { getTokenFromRequest, verifyToken } from '../../../../lib/auth';
 
 export async function GET(
   request: NextRequest,
