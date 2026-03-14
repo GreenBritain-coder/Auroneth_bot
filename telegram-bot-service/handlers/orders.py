@@ -134,7 +134,10 @@ async def show_user_orders(message_or_callback: Union[Message, CallbackQuery]):
                 print(f"[Orders Debug] No orders found for user {user_id} at all")
         except Exception as e:
             print(f"[Orders Debug] Error checking for orders: {e}")
-        await send_message("📦 You don't have any orders yet.")
+        menu_keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="📋 Back to Menu", callback_data="menu")]
+        ])
+        await send_message("📦 You don't have any orders yet.", reply_markup=menu_keyboard)
         return
     
     # Helper function to get display order ID
