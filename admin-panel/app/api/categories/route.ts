@@ -41,7 +41,7 @@ export async function GET(request: NextRequest) {
       category_id: { $in: categoryIds }
     }).lean();
     
-    const subcategoryIds = subcategories.map(s => s._id.toString());
+    const subcategoryIds = subcategories.map(s => String(s._id));
     console.log(`[Categories API] Subcategories: ${subcategories.length}, IDs: ${subcategoryIds.join(', ')}`);
     
     // Get all products for these subcategories
