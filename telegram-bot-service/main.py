@@ -122,6 +122,7 @@ async def on_startup(bot: Bot):
             commands.append(BotCommand(command="start", description="Start the bot"))
             commands.append(BotCommand(command="menu", description="Show menu"))
             commands.append(BotCommand(command="wishlist", description="View your wishlist"))
+            commands.append(BotCommand(command="reviews", description="View all customer reviews"))
             
             # Add main buttons as commands
             if main_buttons and isinstance(main_buttons, list):

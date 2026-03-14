@@ -405,7 +405,7 @@ async def handle_menu_callback(callback: CallbackQuery):
     
     # Build list of available commands
     import re
-    commands_list = ["/start", "/menu", "/wishlist", "/contact"]
+    commands_list = ["/start", "/menu", "/wishlist", "/contact", "/reviews"]
     for button in main_buttons:
         if isinstance(button, str) and button.strip():
             button_clean = re.sub(r'[^\w\s]', '', button)
@@ -421,10 +421,11 @@ async def handle_menu_callback(callback: CallbackQuery):
     # Create inline keyboard from all active main buttons
     inline_keyboard_buttons = []
     
-    # Always add wishlist and contact buttons as the first buttons
+    # Always add wishlist, contact, and reviews buttons as the first row
     inline_keyboard_buttons.append([
         InlineKeyboardButton(text="📝 Wishlist", callback_data="view_wishlist"),
-        InlineKeyboardButton(text="💬 Contact", callback_data="contact")
+        InlineKeyboardButton(text="💬 Contact", callback_data="contact"),
+        InlineKeyboardButton(text="⭐ Reviews", callback_data="view_all_reviews")
     ])
     
     if main_buttons and len(main_buttons) > 0:
@@ -494,7 +495,7 @@ async def cmd_menu(message: Message):
     
     # Build list of available commands
     import re
-    commands_list = ["/start", "/menu", "/wishlist", "/contact"]
+    commands_list = ["/start", "/menu", "/wishlist", "/contact", "/reviews"]
     for button in main_buttons:
         if isinstance(button, str) and button.strip():
             button_clean = re.sub(r'[^\w\s]', '', button)
@@ -510,10 +511,11 @@ async def cmd_menu(message: Message):
     # Create inline keyboard from all active main buttons
     inline_keyboard_buttons = []
     
-    # Always add wishlist and contact buttons as the first buttons
+    # Always add wishlist, contact, and reviews buttons as the first row
     inline_keyboard_buttons.append([
         InlineKeyboardButton(text="📝 Wishlist", callback_data="view_wishlist"),
-        InlineKeyboardButton(text="💬 Contact", callback_data="contact")
+        InlineKeyboardButton(text="💬 Contact", callback_data="contact"),
+        InlineKeyboardButton(text="⭐ Reviews", callback_data="view_all_reviews")
     ])
     
     if main_buttons and len(main_buttons) > 0:

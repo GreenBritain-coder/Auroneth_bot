@@ -59,6 +59,13 @@ async def handle_wishlist_command(message: Message):
     await handle_view_wishlist(fake_callback)
 
 
+@router.message(Command("reviews"))
+async def handle_reviews_command(message: Message):
+    """Handle /reviews command - show all customer reviews"""
+    from handlers.shop import _render_all_reviews
+    await _render_all_reviews(message, None, 1)
+
+
 @router.message(Command("contact"))
 async def handle_contact_command(message: Message):
     """Handle /contact command"""

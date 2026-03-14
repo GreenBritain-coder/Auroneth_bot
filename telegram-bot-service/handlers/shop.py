@@ -1267,6 +1267,127 @@ def _view_reviews_callback(product_id: str, star_filter: Optional[int], page: in
     return f"view_reviews:{product_id}:{f}:{page}"
 
 
+def _view_all_reviews_callback(star_filter: Optional[int], page: int) -> str:
+    """Build callback_data for view_all_reviews. Format: view_all_reviews:filter:page"""
+    f = "all" if star_filter is None else str(star_filter)
+    return f"view_all_reviews:{f}:{page}"
+
+
+async def _render_all_reviews(callback_or_message, star_filter: Optional[int], page: int):
+    """Render the all-reviews view (all customers, this bot). Accepts CallbackQuery or Message."""
+    if hasattr(callback_or_message, "message"):
+        msg = callback_or_message.message
+        bot = callback_or_message.bot
+    else:
+        msg = callback_or_message
+        bot = msg.bot
+
+    bot_config = await get_bot_config()
+    if not bot_config:
+        await msg.answer("❌ Bot configuration not found.")
+        return
+
+    bot_id = str(bot_config["_id"])
+    db = get_database()
+    reviews_collection = db.reviews
+
+    query = {"bot_id": bot_id}
+    if star_filter is not None:
+        query["rating"] = star_filter
+
+    all_reviews = await reviews_collection.find(query).sort("created_at", -1).to_list(length=1000)
+    total_count = len(all_reviews)
+
+    PAGE_SIZE = 5
+    total_pages = max(1, (total_count + PAGE_SIZE - 1) // PAGE_SIZE)
+    page = min(page, total_pages)
+    start = (page - 1) * PAGE_SIZE
+    reviews = all_reviews[start : start + PAGE_SIZE]
+
+    if not all_reviews:
+        reviews_text = "📊 *Rating* ⭐ —\n\n"
+        reviews_text += "*All Customer Reviews*\n\n"
+        reviews_text += "No reviews yet. Customers can rate their orders after purchase."
+    else:
+        avg_rating = sum(r.get("rating", 0) for r in all_reviews) / len(all_reviews)
+        reviews_text = f"📊 *Rating* ⭐ {avg_rating:.2f}/5.0\n\n"
+        reviews_text += f"*All Customer Reviews* ({total_count} total)\n\n"
+
+        for review in reviews:
+            rating = review.get("rating", 0)
+            comment = review.get("comment", "")
+            stars = "★" * rating + "☆" * (5 - rating)
+            reviews_text += f"{stars}\n"
+            if comment:
+                reviews_text += f"{comment}\n"
+            reviews_text += "\n"
+
+    keyboard_buttons = []
+    star_counts = {}
+    for r in all_reviews:
+        s = r.get("rating", 0)
+        star_counts[s] = star_counts.get(s, 0) + 1
+
+    filter_row = []
+    filter_row.append(InlineKeyboardButton(
+        text=f"All{'*' if star_filter is None else ''}",
+        callback_data=_view_all_reviews_callback(None, 1)
+    ))
+    for s in [5, 4, 3, 2, 1]:
+        cnt = star_counts.get(s, 0)
+        filter_row.append(InlineKeyboardButton(
+            text=f"{s} ★ ({cnt})",
+            callback_data=_view_all_reviews_callback(s, 1)
+        ))
+    keyboard_buttons.append(filter_row)
+
+    if total_pages > 1:
+        page_row = []
+        for p in range(1, min(total_pages + 1, 7)):
+            label = f"{p}{'*' if p == page else ''}"
+            if p == 6 and total_pages > 6:
+                label = "6»"
+            page_row.append(InlineKeyboardButton(
+                text=label,
+                callback_data=_view_all_reviews_callback(star_filter, p)
+            ))
+        keyboard_buttons.append(page_row)
+
+    keyboard_buttons.append([InlineKeyboardButton(text="⬅️ Back to menu", callback_data="menu")])
+    keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
+
+    if hasattr(callback_or_message, "message"):
+        try:
+            await msg.edit_text(reviews_text, parse_mode="Markdown", reply_markup=keyboard)
+        except Exception:
+            await msg.answer(reviews_text, parse_mode="Markdown", reply_markup=keyboard)
+    else:
+        await msg.answer(reviews_text, parse_mode="Markdown", reply_markup=keyboard)
+
+
+@router.callback_query(F.data.startswith("view_all_reviews"))
+async def handle_view_all_reviews(callback: CallbackQuery):
+    """Display all customer reviews for this bot (from main menu Reviews button)"""
+    await safe_answer_callback(callback)
+
+    parts = callback.data.split(":")
+    star_filter = None
+    page = 1
+
+    if len(parts) >= 3:
+        if parts[1] != "all":
+            try:
+                star_filter = int(parts[1])
+            except (ValueError, TypeError):
+                pass
+        try:
+            page = max(1, int(parts[2]))
+        except (ValueError, TypeError, IndexError):
+            page = 1
+
+    await _render_all_reviews(callback, star_filter, page)
+
+
 @router.callback_query(F.data.startswith("view_reviews:"))
 async def handle_view_reviews(callback: CallbackQuery):
     """Display product reviews with star filter and pagination"""

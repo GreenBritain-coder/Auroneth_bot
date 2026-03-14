@@ -24,12 +24,13 @@ async def connect_to_mongo():
 
 
 async def _ensure_reviews_indexes():
-    """Create indexes on reviews collection for product_ids and order_id."""
+    """Create indexes on reviews collection for product_ids, order_id, and bot_id."""
     try:
         reviews = db.reviews
         await reviews.create_index("order_id", unique=True, sparse=True)
         await reviews.create_index("product_ids")
         await reviews.create_index("product_id")
+        await reviews.create_index("bot_id")
     except Exception as e:
         print(f"Warning: Could not create reviews indexes: {e}", flush=True)
 
