@@ -52,6 +52,17 @@ This message comes from **Coolify’s reverse proxy**, not from the app. It mean
 3. **Check port** — The front-page Dockerfile exposes **3000**. In the app’s Coolify configuration, **Ports Exposes** (or Port) must be **3000** so the proxy forwards correctly.
 4. **Redeploy** — After changing env or port, click **Deploy** and wait until the new container is **Running**, then reload the site.
 
+### New changes not showing after deploy (e.g. new UI, columns, buttons)
+
+If you pushed code to GitHub and redeployed but the live site still shows the old version:
+
+1. **Force deploy without cache** — In Coolify → **admin-panel** app → **Deploy** button. Before deploying, click **"Advanced"** (or the dropdown next to Deploy) and select **"Force Deploy (without cache)"**. This runs `docker build --no-cache` so no cached layers are reused. Alternatively: **Configuration** → **Advanced** → enable **"Disabled Build Cache"**, then Deploy.
+2. **Verify the correct branch** — In **Source** settings, ensure the app pulls from `main` (or your deployment branch).
+3. **Check deployment logs** — After deploy, open **Deployments** → latest run → **Logs**. Confirm it cloned the latest commit from GitHub (check the commit hash).
+4. **Hard refresh the browser** — After a successful deploy, press `Ctrl+Shift+R` (or `Cmd+Shift+R` on Mac) or use an incognito window.
+
+**Optional:** If your Coolify supports **Build Arguments**, add `CACHEBUST` with value `$(date +%s)` (or the current git commit SHA) to force the builder to invalidate cache on each deploy.
+
 ---
 
 ### 1. Front Page (test.greenbritain.club)
