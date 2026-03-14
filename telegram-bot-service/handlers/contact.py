@@ -228,9 +228,24 @@ async def handle_contact_message(message: Message, state: FSMContext):
     """Handle contact message from user"""
     print(f"[CONTACT MESSAGE] Handler triggered - text: {message.text[:50] if message.text else 'None'}")
     
-    # Skip if it's a command
+    # If user sends /start, /menu, or /contact - close contact chat and run that command
     if message.text and message.text.startswith("/"):
-        print(f"[CONTACT MESSAGE] Skipping command: {message.text}")
+        cmd = message.text.split()[0].lower() if message.text else ""
+        if cmd in ("/start", "/menu", "/contact"):
+            print(f"[CONTACT MESSAGE] User sent {cmd} - closing contact and running command")
+            await state.clear()
+            if cmd == "/start":
+                from handlers.start import cmd_start
+                await cmd_start(message, state)
+            elif cmd == "/menu":
+                from handlers.start import cmd_menu
+                await cmd_menu(message)
+            elif cmd == "/contact":
+                await handle_contact_start(message, state)
+            return
+        # Other commands - clear state and tell user to use /menu
+        await state.clear()
+        await message.answer("✅ Contact chat closed. Use /menu to see options.", reply_markup=ReplyKeyboardRemove())
         return
     
     db = get_database()
