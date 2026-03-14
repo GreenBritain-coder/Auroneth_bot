@@ -84,8 +84,8 @@ dp.message.middleware(LoggingMiddleware())
 dp.callback_query.middleware(LoggingMiddleware())
 
 # Register routers (order matters - more specific handlers first)
+dp.include_router(contact.router)  # Contact handler FIRST to ensure contact callback is caught before any catch-all
 dp.include_router(start.router)  # Commands like /start, /menu, /refresh
-dp.include_router(contact.router)  # Contact handler (MUST be before shop/router to catch contact messages in waiting state)
 dp.include_router(shop.router)  # Shop handlers including address input (before menu to catch address input)
 dp.include_router(orders.router)  # Orders handler (before menu_inline to catch order callbacks)
 dp.include_router(menu.router)  # Menu button handlers

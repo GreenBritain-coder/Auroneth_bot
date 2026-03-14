@@ -418,23 +418,18 @@ async def handle_menu_callback(callback: CallbackQuery):
     menu_text += "🔘 *Tap buttons below or type commands:*\n"
     menu_text += "\n".join([f"• {cmd}" for cmd in commands_list])
     
-    # Create inline keyboard - first row: Orders (N) | Wishlist | Cart (£X.XX) with dynamic values
+    # Create inline keyboard - Contact/Reviews first, then main_buttons, Orders/Wishlist/Cart at bottom
     inline_keyboard_buttons = []
     user_id = str(callback.from_user.id) if callback.from_user else ""
     bot_id = str(bot_config["_id"])
     from utils.bottom_menu import get_menu_stats
     order_count, cart_display = await get_menu_stats(user_id, bot_id)
-    inline_keyboard_buttons.append([
-        InlineKeyboardButton(text=f"📦 Orders ({order_count})", callback_data="orders"),
-        InlineKeyboardButton(text="❤️ Wishlist", callback_data="view_wishlist"),
-        InlineKeyboardButton(text=f"🛒 {cart_display}", callback_data="view_cart"),
-    ])
-    # Second row: Contact, Reviews
+    # First row: Contact, Reviews
     inline_keyboard_buttons.append([
         InlineKeyboardButton(text="💬 Contact", callback_data="contact"),
         InlineKeyboardButton(text="⭐ Reviews", callback_data="view_all_reviews")
     ])
-    # Filter out Orders from main_buttons (we have it in row 1 with dynamic count)
+    # Filter out Orders from main_buttons (we have it in bottom row with dynamic count)
     main_buttons_filtered = [b for b in main_buttons if re.sub(r'[^\w\s]', '', str(b).lower()).strip() != "orders"]
     if main_buttons_filtered and len(main_buttons_filtered) > 0:
         for i in range(0, len(main_buttons_filtered), 2):
@@ -453,6 +448,12 @@ async def handle_menu_callback(callback: CallbackQuery):
                     callback_data=callback_data_2
                 ))
             inline_keyboard_buttons.append(button_row)
+    # Bottom row: Orders (N) | Wishlist | Cart (£X.XX)
+    inline_keyboard_buttons.append([
+        InlineKeyboardButton(text=f"📦 Orders ({order_count})", callback_data="orders"),
+        InlineKeyboardButton(text="❤️ Wishlist", callback_data="view_wishlist"),
+        InlineKeyboardButton(text=f"🛒 {cart_display}", callback_data="view_cart"),
+    ])
     
     # Edit the message to show menu directly
     if inline_keyboard_buttons:
@@ -513,23 +514,18 @@ async def cmd_menu(message: Message):
     menu_text += "🔘 *Tap buttons below or type commands:*\n"
     menu_text += "\n".join([f"• {cmd}" for cmd in commands_list])
     
-    # Create inline keyboard - first row: Orders (N) | Wishlist | Cart (£X.XX) with dynamic values
+    # Create inline keyboard - Contact/Reviews first, then main_buttons, Orders/Wishlist/Cart at bottom
     inline_keyboard_buttons = []
     user_id = str(message.from_user.id) if message.from_user else ""
     bot_id = str(bot_config["_id"])
     from utils.bottom_menu import get_menu_stats
     order_count, cart_display = await get_menu_stats(user_id, bot_id)
-    inline_keyboard_buttons.append([
-        InlineKeyboardButton(text=f"📦 Orders ({order_count})", callback_data="orders"),
-        InlineKeyboardButton(text="❤️ Wishlist", callback_data="view_wishlist"),
-        InlineKeyboardButton(text=f"🛒 {cart_display}", callback_data="view_cart"),
-    ])
-    # Second row: Contact, Reviews
+    # First row: Contact, Reviews
     inline_keyboard_buttons.append([
         InlineKeyboardButton(text="💬 Contact", callback_data="contact"),
         InlineKeyboardButton(text="⭐ Reviews", callback_data="view_all_reviews")
     ])
-    # Filter out Orders from main_buttons (we have it in row 1 with dynamic count)
+    # Filter out Orders from main_buttons (we have it in bottom row with dynamic count)
     main_buttons_filtered = [b for b in main_buttons if re.sub(r'[^\w\s]', '', str(b).lower()).strip() != "orders"]
     if main_buttons_filtered and len(main_buttons_filtered) > 0:
         for i in range(0, len(main_buttons_filtered), 2):
@@ -548,6 +544,12 @@ async def cmd_menu(message: Message):
                     callback_data=callback_data_2
                 ))
             inline_keyboard_buttons.append(button_row)
+    # Bottom row: Orders (N) | Wishlist | Cart (£X.XX)
+    inline_keyboard_buttons.append([
+        InlineKeyboardButton(text=f"📦 Orders ({order_count})", callback_data="orders"),
+        InlineKeyboardButton(text="❤️ Wishlist", callback_data="view_wishlist"),
+        InlineKeyboardButton(text=f"🛒 {cart_display}", callback_data="view_cart"),
+    ])
     
     # Show inline menu
     if inline_keyboard_buttons:

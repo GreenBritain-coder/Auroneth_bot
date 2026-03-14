@@ -11,6 +11,25 @@ from handlers import shop, orders, menu
 router = Router()
 
 
+# Handle contact button - fallback in case contact router doesn't catch it (e.g. router order)
+@router.callback_query(F.data == "contact")
+async def handle_contact_button_fallback(callback: CallbackQuery, state: FSMContext):
+    """Fallback handler for Contact button - ensures it works even if contact router misses it"""
+    await safe_answer_callback(callback)
+    try:
+        from handlers.contact import handle_contact_start
+        user_id = str(callback.from_user.id) if callback.from_user else None
+        await handle_contact_start(callback.message, state, user_id=user_id)
+    except Exception as e:
+        print(f"[MENU INLINE] Contact fallback error: {e}")
+        import traceback
+        traceback.print_exc()
+        try:
+            await callback.message.answer("❌ Error opening contact. Try /contact or /start first.")
+        except Exception:
+            pass
+
+
 # Handle menu-specific actions - catch all callback queries that aren't handled by other routers
 # This will handle discounts, promotions, and other menu buttons
 # Note: "contact" and "menu" are handled by other routers, so we skip them here

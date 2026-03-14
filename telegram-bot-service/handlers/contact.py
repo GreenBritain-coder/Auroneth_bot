@@ -27,35 +27,45 @@ async def handle_contact_callback(callback: CallbackQuery, state: FSMContext):
     """Handle contact button callback"""
     print(f"[CONTACT CALLBACK] Button clicked - user: {callback.from_user.id if callback.from_user else 'None'}")
     
-    # Handle case where callback.message might be None (old messages)
-    if not callback.message:
-        await safe_answer_callback(callback, "❌ Message not found. Please use /contact command or /start first.", show_alert=True)
-        return
-    
-    await safe_answer_callback(callback)
-    
-    # Use callback.from_user instead of callback.message.from_user
-    # callback.from_user is always the user who clicked the button
-    # Ensure we have a user
-    if not callback.from_user:
-        await callback.message.answer("❌ Could not identify user.", reply_markup=ReplyKeyboardRemove())
-        return
-    
-    # Verify user exists in database before proceeding
-    db = get_database()
-    users_collection = db.users
-    telegram_user_id = str(callback.from_user.id)
-    
-    user = await users_collection.find_one({"_id": telegram_user_id})
-    if not user:
-        print(f"[CONTACT CALLBACK] User not found: {telegram_user_id}")
-        await callback.message.answer("❌ Please use /start first to set up your account.", reply_markup=ReplyKeyboardRemove())
-        return
-    
-    print(f"[CONTACT CALLBACK] User found, proceeding with handle_contact_start")
-    # Proceed with contact handler using callback's message
-    # The message.from_user might differ from callback.from_user, so we'll handle it in handle_contact_start
-    await handle_contact_start(callback.message, state, user_id=telegram_user_id)
+    try:
+        # Handle case where callback.message might be None (old messages)
+        if not callback.message:
+            await safe_answer_callback(callback, "❌ Message not found. Please use /contact command or /start first.", show_alert=True)
+            return
+        
+        await safe_answer_callback(callback)
+        
+        # Use callback.from_user instead of callback.message.from_user
+        # callback.from_user is always the user who clicked the button
+        # Ensure we have a user
+        if not callback.from_user:
+            await callback.message.answer("❌ Could not identify user.", reply_markup=ReplyKeyboardRemove())
+            return
+        
+        # Verify user exists in database before proceeding (try both string and int _id for compatibility)
+        db = get_database()
+        users_collection = db.users
+        telegram_user_id = str(callback.from_user.id)
+        
+        user = await users_collection.find_one({"_id": telegram_user_id})
+        if not user:
+            user = await users_collection.find_one({"_id": callback.from_user.id})
+        if not user:
+            print(f"[CONTACT CALLBACK] User not found: {telegram_user_id}")
+            await callback.message.answer("❌ Please use /start first to set up your account.", reply_markup=ReplyKeyboardRemove())
+            return
+        
+        print(f"[CONTACT CALLBACK] User found, proceeding with handle_contact_start")
+        # Proceed with contact handler using callback's message
+        await handle_contact_start(callback.message, state, user_id=telegram_user_id)
+    except Exception as e:
+        print(f"[CONTACT CALLBACK] Error: {e}")
+        import traceback
+        traceback.print_exc()
+        try:
+            await callback.message.answer("❌ Error opening contact. Try /contact or /start first.", reply_markup=ReplyKeyboardRemove())
+        except Exception:
+            await safe_answer_callback(callback, "❌ Error opening contact.", show_alert=True)
 
 
 async def handle_contact_start(message: Message, state: FSMContext, user_id: str = None):
