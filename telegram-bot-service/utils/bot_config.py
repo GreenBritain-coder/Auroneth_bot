@@ -60,7 +60,7 @@ async def ensure_bot_registered():
 
     bot_token = get_bot_token()
     db = get_database()
-    if not bot_token or not db:
+    if not bot_token or db is None:
         return None
 
     bots_collection = db.bots
