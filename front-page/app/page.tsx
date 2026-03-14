@@ -41,6 +41,9 @@ interface Bot {
   featured?: boolean;
   payment_methods?: string[]; // Supported payment methods (e.g., ["BTC", "LTC"])
   cut_off_time?: string; // Cut-off time in HH:MM format (e.g., "14:30")
+  sales?: number; // Paid orders count
+  rating?: string | null; // Rating percentage (e.g., "96.81%")
+  rating_count?: string | null; // Number of ratings (e.g., "7707")
 }
 
 export default function Home() {
@@ -227,11 +230,15 @@ export default function Home() {
                     {/* Statistics Section */}
                     <div className={`grid grid-cols-3 gap-4 mb-4 pb-4 ${isFeatured ? 'border-b border-white/20' : 'border-b border-gray-200'}`}>
                       <div>
-                        <div className={`text-2xl font-bold ${isFeatured ? 'text-white' : theme.stat}`}>0+</div>
+                        <div className={`text-2xl font-bold ${isFeatured ? 'text-white' : theme.stat}`}>
+                          {(bot.sales ?? 0)}+
+                        </div>
                         <div className={`text-xs ${isFeatured ? 'text-white/80' : 'text-gray-500'}`}>SALES</div>
                       </div>
                       <div>
-                        <div className={`text-2xl font-bold ${isFeatured ? 'text-white' : theme.stat}`}>N/A</div>
+                        <div className={`text-2xl font-bold ${isFeatured ? 'text-white' : theme.stat}`}>
+                          {bot.rating && bot.rating.trim() ? bot.rating : 'N/A'}
+                        </div>
                         <div className={`text-xs ${isFeatured ? 'text-white/80' : 'text-gray-500'}`}>RATING</div>
                       </div>
                       <div>
@@ -287,7 +294,9 @@ export default function Home() {
                     {/* Reviews */}
                     <div className="flex items-center gap-1 mb-3">
                       <span className={`text-lg ${isFeatured ? 'text-white' : theme.text}`}>★</span>
-                      <span className={`text-sm ${isFeatured ? 'text-white/90' : 'text-gray-600'}`}>0+ reviews</span>
+                      <span className={`text-sm ${isFeatured ? 'text-white/90' : 'text-gray-600'}`}>
+                        {bot.rating_count && bot.rating_count.trim() ? `${bot.rating_count}+ reviews` : '0+ reviews'}
+                      </span>
                     </div>
 
                     {/* Establishment Date */}

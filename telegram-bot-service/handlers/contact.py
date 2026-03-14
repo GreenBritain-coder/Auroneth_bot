@@ -26,12 +26,13 @@ async def handle_contact_command(message: Message, state: FSMContext):
 async def handle_contact_callback(callback: CallbackQuery, state: FSMContext):
     """Handle contact button callback"""
     print(f"[CONTACT CALLBACK] Button clicked - user: {callback.from_user.id if callback.from_user else 'None'}")
-    await safe_answer_callback(callback)
     
     # Handle case where callback.message might be None (old messages)
     if not callback.message:
-        await callback.answer("❌ Message not found. Please use /contact command or /start first.", show_alert=True)
+        await safe_answer_callback(callback, "❌ Message not found. Please use /contact command or /start first.", show_alert=True)
         return
+    
+    await safe_answer_callback(callback)
     
     # Use callback.from_user instead of callback.message.from_user
     # callback.from_user is always the user who clicked the button

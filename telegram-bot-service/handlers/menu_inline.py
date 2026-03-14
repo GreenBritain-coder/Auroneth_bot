@@ -3,6 +3,7 @@ Handler for menu inline button actions
 """
 from aiogram import Router, F
 from aiogram.types import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.fsm.context import FSMContext
 from utils.bot_config import get_bot_config
 from utils.callback_utils import safe_answer_callback
 from handlers import shop, orders, menu
@@ -14,7 +15,7 @@ router = Router()
 # This will handle discounts, promotions, and other menu buttons
 # Note: "contact" and "menu" are handled by other routers, so we skip them here
 @router.callback_query(F.data & ~F.data.in_(["contact", "menu"]))
-async def handle_menu_inline_button(callback: CallbackQuery):
+async def handle_menu_inline_button(callback: CallbackQuery, state: FSMContext):
     """Handle menu inline button clicks - update the menu message"""
     print(f"[MENU INLINE] Handler triggered! Callback data: '{callback.data}'")
     await safe_answer_callback(callback)
@@ -155,10 +156,10 @@ async def handle_menu_inline_button(callback: CallbackQuery):
     elif "offers" in action:
         response_text = custom_message.strip() if custom_message and custom_message.strip() else messages.get("offers", "Offers information will be displayed here.")
     elif "support" in action or "chat" in action:
-        # Show custom message if configured, otherwise support message
-        contact_message = custom_message.strip() if custom_message and custom_message.strip() else messages.get("support", "Contact support for assistance.")
-        await callback.message.answer(contact_message, parse_mode="Markdown")
-        await safe_answer_callback(callback)
+        # Open full contact interface (same as Contact button) - allows sending messages to vendor
+        from handlers.contact import handle_contact_start
+        user_id = str(callback.from_user.id) if callback.from_user else None
+        await handle_contact_start(callback.message, state, user_id=user_id)
         return
     elif "questions" in action or "terms" in action:
         response_text = custom_message.strip() if custom_message and custom_message.strip() else messages.get("questions", "Questions and Answers (T&C) information will be displayed here.")
