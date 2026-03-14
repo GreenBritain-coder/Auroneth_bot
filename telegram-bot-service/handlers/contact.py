@@ -72,13 +72,12 @@ async def handle_contact_callback(callback: CallbackQuery, state: FSMContext):
             await safe_answer_callback(callback, "❌ Error opening contact.", show_alert=True)
 
 
-def _escape_markdown(text: str) -> str:
-    """Escape special Markdown characters to prevent parse errors"""
+def _escape_html(text: str) -> str:
+    """Escape HTML special chars for Telegram HTML parse_mode"""
     if not text:
         return ""
-    for char in ['_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!']:
-        text = text.replace(char, f'\\{char}')
-    return text
+    import html
+    return html.escape(str(text))
 
 
 async def handle_contact_start(message: Message, state: FSMContext, user_id: str = None):
@@ -125,18 +124,18 @@ async def handle_contact_start(message: Message, state: FSMContext, user_id: str
         "userId": telegram_user_id
     }).sort("timestamp", -1).limit(20).to_list(length=20)
     
-    # Build contact interface message (escape secret_phrase for Markdown - may contain _ * ` etc.)
-    secret_phrase_escaped = _escape_markdown(str(secret_phrase))
-    last_seen_escaped = _escape_markdown(str(last_seen_text))
-    contact_message = "💬 *Contact Vendor*\n\n"
+    # Build contact interface message (use HTML - escape user content)
+    secret_phrase_escaped = _escape_html(str(secret_phrase))
+    last_seen_escaped = _escape_html(str(last_seen_text))
+    contact_message = "💬 <b>Contact Vendor</b>\n\n"
     contact_message += "Send messages to the chat. Be sure to check your secret phrase.\n\n"
-    contact_message += f"*Phrase:* `{secret_phrase_escaped}`\n"
-    contact_message += f"*Last seen:* {last_seen_escaped}\n\n"
+    contact_message += f"<b>Phrase:</b> <code>{secret_phrase_escaped}</code>\n"
+    contact_message += f"<b>Last seen:</b> {last_seen_escaped}\n\n"
     contact_message += "This is not a live chat. The seller will reply as soon as he reads your messages.\n\n"
     
     # Show conversation history if available
     if recent_messages:
-        contact_message += "📜 *Conversation History:*\n\n"
+        contact_message += "📜 <b>Conversation History:</b>\n\n"
         # Reverse to show oldest first
         for msg in reversed(recent_messages):
             msg_date = msg.get("timestamp")
