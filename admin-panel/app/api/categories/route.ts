@@ -34,7 +34,7 @@ export async function GET(request: NextRequest) {
     // Calculate order counts for each category
     // Chain: Category → Subcategory → Product → Order
     const categoryIds = categories.map((c: { _id: unknown }) => String(c._id));
-    console.log(`[Categories API] Categories: ${categories.map((c: { name?: string }) => c.name ?? '').join(', ')}, IDs: ${categoryIds.join(', ')}`);
+    console.log(`[Categories API] Categories: ${(categories as Array<{ name?: string }>).map(c => c.name ?? '').join(', ')}, IDs: ${categoryIds.join(', ')}`);
     
     // Get all subcategories for these categories
     const subcategories = await Subcategory.find({
