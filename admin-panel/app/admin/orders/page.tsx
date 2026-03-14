@@ -214,6 +214,9 @@ export default function OrdersPage() {
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Notes
                 </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Actions
+                </th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
@@ -265,24 +268,13 @@ export default function OrdersPage() {
                       {order.commission ? order.commission.toFixed(8) : '0.00000000'}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex items-center gap-2">
-                        <span
-                          className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(
-                            order.paymentStatus || 'unknown'
-                          )}`}
-                        >
-                          {order.paymentStatus || 'unknown'}
-                        </span>
-                        {(order.paymentStatus === 'pending' || !order.paymentStatus) && orderId && (
-                          <button
-                            onClick={() => confirmPayment(orderId)}
-                            disabled={confirmingOrderId === orderId}
-                            className="text-xs font-medium text-indigo-600 hover:text-indigo-900 disabled:opacity-50 disabled:cursor-not-allowed"
-                          >
-                            {confirmingOrderId === orderId ? 'Confirming...' : 'Confirm'}
-                          </button>
-                        )}
-                      </div>
+                      <span
+                        className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(
+                          order.paymentStatus || 'unknown'
+                        )}`}
+                      >
+                        {order.paymentStatus || 'unknown'}
+                      </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                       {order.timestamp ? new Date(order.timestamp).toLocaleDateString() : 'N/A'}
@@ -423,6 +415,19 @@ export default function OrdersPage() {
                         </div>
                       ) : (
                         <span className="text-gray-400 text-xs">-</span>
+                      )}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm">
+                      {orderId && (order.paymentStatus || '').toLowerCase() !== 'paid' ? (
+                        <button
+                          onClick={() => confirmPayment(orderId)}
+                          disabled={confirmingOrderId === orderId}
+                          className="inline-flex items-center px-3 py-1.5 rounded-md text-sm font-medium bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
+                        >
+                          {confirmingOrderId === orderId ? 'Confirming...' : 'Confirm payment'}
+                        </button>
+                      ) : (
+                        <span className="text-gray-400 text-xs">—</span>
                       )}
                     </td>
                   </tr>
