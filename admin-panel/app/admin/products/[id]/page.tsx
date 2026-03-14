@@ -70,10 +70,12 @@ export default function EditProductPage() {
 
   const fetchCategories = async () => {
     try {
-      const response = await fetch('/api/categories', { credentials: 'include' });
+      const response = await fetch('/api/categories/list', { credentials: 'include' });
       if (response.ok) {
         const data = await response.json();
         setCategories(Array.isArray(data) ? data : []);
+      } else {
+        console.error('Categories fetch failed:', response.status);
       }
     } catch (err) {
       console.error('Error fetching categories:', err);
@@ -285,8 +287,8 @@ export default function EditProductPage() {
             >
               <option value="">Select a category (required if no subcategory)</option>
               {categories.map((cat) => (
-                <option key={cat._id} value={cat._id}>
-                  {cat.name}
+                <option key={String(cat._id)} value={String(cat._id)}>
+                  {cat.name || 'Unnamed'}
                 </option>
               ))}
             </select>
