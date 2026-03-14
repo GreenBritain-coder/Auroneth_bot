@@ -62,9 +62,9 @@ export async function POST(
     const invoicesCollection = db.collection('invoices');
     const commissionsCollection = db.collection('commissions');
 
-    // Update order to paid
+    // Update order to paid (orderId is string; MongoDB accepts it for string _id)
     await Order.collection.updateOne(
-      { _id: orderId },
+      { _id: orderId } as any,
       {
         $set: {
           paymentStatus: 'paid',
