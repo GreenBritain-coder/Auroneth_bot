@@ -118,6 +118,7 @@ export interface IProduct extends Document {
   description: string;
   image_url?: string;
   subcategory_id: string;
+  category_id?: string; // When subcategory_id is empty, product appears under this category
   bot_ids: string[];
   unit?: string; // Unit of measurement: "pcs" (pieces), "gr" (grams), "kg" (kilograms), "ml" (milliliters)
   increment_amount?: number; // Amount to increment/decrement (defaults to price-based calculation)
@@ -136,6 +137,7 @@ const ProductSchema = new Schema<IProduct>({
   description: { type: String, required: true },
   image_url: { type: String, default: '' },
   subcategory_id: { type: String, default: '' }, // Not required for backward compatibility
+  category_id: { type: String, default: '' }, // When subcategory empty, product appears under this category
   bot_ids: { type: [String], default: [] },
   unit: { type: String, default: 'pcs' }, // Default to "pcs" for pieces
   increment_amount: { type: Number }, // Optional, defaults to price-based calculation

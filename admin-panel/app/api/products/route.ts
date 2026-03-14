@@ -77,6 +77,7 @@ export async function POST(request: NextRequest) {
       description: data.description,
       image_url: data.image_url || '',
       subcategory_id: data.subcategory_id || '',
+      category_id: data.category_id || '',
       bot_ids: bot_ids,
       unit: data.unit || 'pcs',
       increment_amount: data.increment_amount,

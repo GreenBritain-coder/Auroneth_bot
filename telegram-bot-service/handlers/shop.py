@@ -528,16 +528,75 @@ async def handle_category(callback: CallbackQuery):
         "bot_ids": bot_id
     }).sort("order", 1).to_list(length=50)
     
+    # If no subcategories, show products directly under this category (products with category_id)
     if not subcategories:
+        products_collection = db.products
+        products = await products_collection.find({
+            "category_id": category_id,
+            "bot_ids": bot_id
+        }).to_list(length=50)
+        if products:
+            from bson import ObjectId
+            try:
+                category = await db.categories.find_one({"_id": ObjectId(category_id)})
+            except Exception:
+                category = await db.categories.find_one({"_id": category_id})
+            category_name = category.get("name", "Products") if category else "Products"
+            back_keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="⬅️ Back to Categories", callback_data="shop")],
+                [InlineKeyboardButton(text="📋 Back to Menu", callback_data="menu")]
+            ])
+            try:
+                await callback.message.edit_text(
+                    f"🛍️ *Products in {category_name}*\n\nSelect a product:",
+                    parse_mode="Markdown",
+                    reply_markup=back_keyboard
+                )
+            except Exception:
+                await callback.message.answer(
+                    f"🛍️ *Products in {category_name}*\n\nSelect a product:",
+                    parse_mode="Markdown",
+                    reply_markup=back_keyboard
+                )
+            for product in products:
+                base_price = product.get('base_price') or product.get('price', 0)
+                product_text = f"🛍️ *{product['name']}*\n\n"
+                product_text += f"{product.get('description', '')}\n\n"
+                product_text += f"💰 Base Price: {base_price} {product['currency']}"
+                if product.get("variations"):
+                    product_text += f"\n📦 Variations available"
+                product_id_str = str(product['_id'])
+                keyboard = InlineKeyboardMarkup(inline_keyboard=[[
+                    InlineKeyboardButton(text="🛒 Add to Cart", callback_data=f"add_cart:{product_id_str}"),
+                    InlineKeyboardButton(text="ℹ️ More Info", callback_data=f"product_info:{product_id_str}")
+                ]])
+                image_url = product.get("image_url") or ""
+                if image_url and image_url.strip() and image_url.startswith("http"):
+                    await callback.message.answer_photo(
+                        photo=image_url,
+                        caption=product_text,
+                        parse_mode="Markdown",
+                        reply_markup=keyboard
+                    )
+                elif image_url and image_url.strip() and image_url.startswith("data:"):
+                    await callback.message.answer_photo(
+                        photo=image_url,
+                        caption=product_text,
+                        parse_mode="Markdown",
+                        reply_markup=keyboard
+                    )
+                else:
+                    await callback.message.answer(product_text, parse_mode="Markdown", reply_markup=keyboard)
+            return
         try:
-            await callback.message.edit_text("📁 No subcategories available in this category.")
+            await callback.message.edit_text("📁 No subcategories or products available in this category.")
         except Exception as e:
             print(f"Edit failed: {e}")
             try:
                 await callback.message.delete()
             except:
                 pass
-            await callback.message.answer("📁 No subcategories available in this category.")
+            await callback.message.answer("📁 No subcategories or products available in this category.")
         return
     
     # Create subcategory buttons

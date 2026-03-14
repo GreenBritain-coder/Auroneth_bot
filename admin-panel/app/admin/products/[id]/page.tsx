@@ -11,6 +11,7 @@ export default function EditProductPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [bots, setBots] = useState<any[]>([]);
+  const [categories, setCategories] = useState<any[]>([]);
   const [subcategories, setSubcategories] = useState<any[]>([]);
   const [formData, setFormData] = useState({
     name: '',
@@ -18,6 +19,7 @@ export default function EditProductPage() {
     currency: 'GBP',
     description: '',
     image_url: '',
+    category_id: '',
     subcategory_id: '',
     bot_ids: [] as string[],
     unit: 'pcs',
@@ -34,6 +36,7 @@ export default function EditProductPage() {
 
   useEffect(() => {
     fetchBots();
+    fetchCategories();
     fetchSubcategories();
     if (productId) {
       fetchProduct();
@@ -41,11 +44,14 @@ export default function EditProductPage() {
   }, [productId]);
 
   useEffect(() => {
-    // When subcategory changes, update bot_ids if needed
+    // When subcategory changes, update bot_ids and category if needed
     if (formData.subcategory_id) {
       const subcategory = subcategories.find(s => s._id === formData.subcategory_id);
-      if (subcategory && subcategory.bot_ids && formData.bot_ids.length === 0) {
-        setFormData(prev => ({ ...prev, bot_ids: subcategory.bot_ids }));
+      if (subcategory) {
+        const updates: Partial<typeof formData> = {};
+        if (subcategory.bot_ids && formData.bot_ids.length === 0) updates.bot_ids = subcategory.bot_ids;
+        if (subcategory.category_id) updates.category_id = subcategory.category_id;
+        if (Object.keys(updates).length) setFormData(prev => ({ ...prev, ...updates }));
       }
     }
   }, [formData.subcategory_id]);
@@ -59,6 +65,18 @@ export default function EditProductPage() {
       }
     } catch (err) {
       console.error('Error fetching bots:', err);
+    }
+  };
+
+  const fetchCategories = async () => {
+    try {
+      const response = await fetch('/api/categories');
+      if (response.ok) {
+        const data = await response.json();
+        setCategories(data);
+      }
+    } catch (err) {
+      console.error('Error fetching categories:', err);
     }
   };
 
@@ -86,6 +104,7 @@ export default function EditProductPage() {
           currency: product.currency || 'GBP',
           description: product.description || '',
           image_url: imageUrl,
+          category_id: product.category_id || '',
           subcategory_id: product.subcategory_id || '',
           bot_ids: product.bot_ids || [],
           unit: product.unit || 'pcs',
@@ -153,13 +172,20 @@ export default function EditProductPage() {
         // Already converted to base64 in handleImageUpload
       }
       
+      if (!formData.subcategory_id && !formData.category_id) {
+        setError('Please select a category or subcategory');
+        setSaving(false);
+        return;
+      }
+
       const updateData = {
         name: formData.name,
         base_price: parseFloat(formData.base_price),
         currency: formData.currency,
         description: formData.description,
         image_url: imageUrl,
-        subcategory_id: formData.subcategory_id,
+        category_id: formData.category_id || '',
+        subcategory_id: formData.subcategory_id || '',
         bot_ids: formData.bot_ids,
         unit: formData.unit || 'pcs',
         increment_amount: formData.increment_amount ? parseFloat(formData.increment_amount) : undefined,
@@ -251,14 +277,32 @@ export default function EditProductPage() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700">Subcategory *</label>
+            <label className="block text-sm font-medium text-gray-700">Category</label>
             <select
-              required
+              className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
+              value={formData.category_id}
+              onChange={(e) => setFormData({ ...formData, category_id: e.target.value })}
+            >
+              <option value="">Select a category (required if no subcategory)</option>
+              {categories.map((cat) => (
+                <option key={cat._id} value={cat._id}>
+                  {cat.name}
+                </option>
+              ))}
+            </select>
+            <p className="mt-1 text-sm text-gray-500">
+              Required when no subcategory is selected.
+            </p>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700">Subcategory</label>
+            <select
               className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
               value={formData.subcategory_id}
               onChange={(e) => setFormData({ ...formData, subcategory_id: e.target.value })}
             >
-              <option value="">Select a subcategory</option>
+              <option value="">None (use category only)</option>
               {subcategories.map((subcat) => (
                 <option key={subcat._id} value={subcat._id}>
                   {subcat.name}
