@@ -139,6 +139,13 @@ export async function PATCH(
       existingBot.markModified('cut_off_time');
       console.log('Marked cut_off_time as modified, value:', updateData.cut_off_time);
     }
+    // Explicitly mark rating fields as modified so they persist to MongoDB
+    if ('rating' in updateData) {
+      existingBot.markModified('rating');
+    }
+    if ('rating_count' in updateData) {
+      existingBot.markModified('rating_count');
+    }
 
     // Save the bot to ensure all changes are persisted
     await existingBot.save();

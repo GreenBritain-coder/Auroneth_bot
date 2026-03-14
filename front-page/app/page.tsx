@@ -92,7 +92,16 @@ export default function Home() {
 
       {/* Bot Listing Section */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-        <h2 className="text-3xl font-bold text-gray-900 mb-8">Available Bots</h2>
+        <div className="flex justify-between items-center mb-8">
+          <h2 className="text-3xl font-bold text-gray-900">Available Bots</h2>
+          <button
+            onClick={() => { setLoading(true); fetchBots(); }}
+            disabled={loading}
+            className="px-4 py-2 text-sm font-medium text-indigo-600 bg-indigo-50 rounded-md hover:bg-indigo-100 disabled:opacity-50"
+          >
+            {loading ? 'Refreshing...' : 'Refresh'}
+          </button>
+        </div>
 
         {loading ? (
           <div className="text-center py-12">
