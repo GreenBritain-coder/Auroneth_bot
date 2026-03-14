@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import mongoose from 'mongoose';
 import connectDB from '../../../lib/db';
 import { Category, Subcategory, Product, Order } from '../../../lib/models';
 import { getTokenFromRequest, verifyToken } from '../../../lib/auth';
@@ -25,9 +26,18 @@ export async function GET(request: NextRequest) {
       const { Bot } = await import('../../../lib/models');
       const userBots = await Bot.find({ owner: payload.userId });
       const userBotIds = userBots.map(b => b._id.toString());
+      // Match both string and ObjectId formats (MongoDB may store bot_ids as either)
+      const matchIds: (string | mongoose.Types.ObjectId)[] = [...userBotIds];
+      userBotIds.forEach(id => {
+        if (/^[a-f0-9]{24}$/i.test(id)) {
+          try {
+            matchIds.push(new mongoose.Types.ObjectId(id));
+          } catch {}
+        }
+      });
       
       categories = await Category.find({
-        bot_ids: { $in: userBotIds }
+        bot_ids: { $in: matchIds }
       }).sort({ order: 1 }).lean();
     }
     

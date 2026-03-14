@@ -71,6 +71,8 @@ export async function PATCH(
       return NextResponse.json({ error: 'Category not found' }, { status: 404 });
     }
 
+    const data = await request.json();
+
     if (payload.role !== 'super-admin') {
       const { Bot } = await import('../../../../lib/models');
       const userBots = await Bot.find({ owner: payload.userId });
@@ -84,13 +86,11 @@ export async function PATCH(
       }
       
       // Filter bot_ids to only user's bots
-      const data = await request.json();
       if (data.bot_ids && Array.isArray(data.bot_ids)) {
         data.bot_ids = data.bot_ids.filter((id: string) => userBotIds.includes(id));
       }
     }
 
-    const data = await request.json();
     const category = await Category.findByIdAndUpdate(
       params.id,
       { $set: data },
