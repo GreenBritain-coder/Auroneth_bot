@@ -17,6 +17,10 @@ class QuantityInputStates(StatesGroup):
     waiting_for_quantity = State()
 
 
+class ReviewCommentStates(StatesGroup):
+    waiting_for_comment = State()
+
+
 async def prepare_image_for_telegram(image_url: str) -> Optional[BufferedInputFile]:
     """
     Prepare image for Telegram sending.
@@ -225,10 +229,17 @@ async def show_product_quantity_interface(callback: CallbackQuery, product: dict
     currency_symbol = "£" if currency == "GBP" else currency
     cart_total_display = f"{currency_symbol}{cart_total_value}"
     
-    # Get review count
+    # Get review count (support legacy product_id and new product_ids from order reviews)
     db = get_database()
     reviews_collection = db.reviews
-    review_count = await reviews_collection.count_documents({"product_id": product_id})
+    pid_str = str(product_id)
+    review_count = await reviews_collection.count_documents({
+        "$or": [
+            {"product_id": product_id},
+            {"product_id": pid_str},
+            {"product_ids": pid_str},
+        ]
+    })
     
     # Format quantity display
     if unit == "pcs":
@@ -1241,18 +1252,46 @@ async def handle_remove_from_wishlist(callback: CallbackQuery):
         await callback.message.answer("❌ Item not found in wishlist.")
 
 
+def _reviews_query_for_product(product_id: str, star_filter: Optional[int] = None):
+    """Build MongoDB query for reviews of a product (legacy product_id or product_ids)."""
+    pid_str = str(product_id)
+    base = {"$or": [{"product_id": product_id}, {"product_id": pid_str}, {"product_ids": pid_str}]}
+    if star_filter is not None:
+        base["rating"] = star_filter
+    return base
+
+
+def _view_reviews_callback(product_id: str, star_filter: Optional[int], page: int) -> str:
+    """Build callback_data for view_reviews. Format: view_reviews:pid:filter:page"""
+    f = "all" if star_filter is None else str(star_filter)
+    return f"view_reviews:{product_id}:{f}:{page}"
+
+
 @router.callback_query(F.data.startswith("view_reviews:"))
 async def handle_view_reviews(callback: CallbackQuery):
-    """Display product reviews"""
+    """Display product reviews with star filter and pagination"""
     await safe_answer_callback(callback)
-    
-    product_id = callback.data.split(":")[1]
-    
+
+    parts = callback.data.split(":")
+    product_id = parts[1]
+    star_filter = None
+    page = 1
+
+    if len(parts) >= 4:
+        if parts[2] != "all":
+            try:
+                star_filter = int(parts[2])
+            except (ValueError, TypeError):
+                pass
+        try:
+            page = max(1, int(parts[3]))
+        except (ValueError, TypeError, IndexError):
+            page = 1
+
     db = get_database()
     reviews_collection = db.reviews
     products_collection = db.products
-    
-    # Get product
+
     from bson import ObjectId
     product = None
     try:
@@ -1260,48 +1299,257 @@ async def handle_view_reviews(callback: CallbackQuery):
             product = await products_collection.find_one({"_id": ObjectId(product_id)})
     except Exception:
         pass
-    
+
     if not product:
         product = await products_collection.find_one({"_id": product_id})
-    
+
     if not product:
         await callback.message.answer("❌ Product not found.")
         return
-    
-    # Get reviews
-    reviews = await reviews_collection.find({"product_id": product_id}).sort("created_at", -1).limit(10).to_list(length=10)
-    
-    if not reviews:
+
+    query = _reviews_query_for_product(product_id, star_filter)
+    all_reviews = await reviews_collection.find(query).sort("created_at", -1).to_list(length=1000)
+    total_count = len(all_reviews)
+
+    PAGE_SIZE = 5
+    total_pages = max(1, (total_count + PAGE_SIZE - 1) // PAGE_SIZE)
+    page = min(page, total_pages)
+    start = (page - 1) * PAGE_SIZE
+    reviews = all_reviews[start : start + PAGE_SIZE]
+
+    if not all_reviews:
         reviews_text = f"⭐ *Reviews for {product['name']}*\n\n"
         reviews_text += "No reviews yet. Be the first to review this product!"
     else:
-        # Calculate average rating
-        total_rating = sum(r.get("rating", 0) for r in reviews)
-        avg_rating = total_rating / len(reviews) if reviews else 0
-        
-        reviews_text = f"⭐ *Reviews for {product['name']}*\n\n"
-        reviews_text += f"🌟 Average Rating: {avg_rating:.1f}/5.0 ({len(reviews)} reviews)\n\n"
-        
-        for review in reviews[:5]:  # Show first 5
+        avg_rating = sum(r.get("rating", 0) for r in all_reviews) / len(all_reviews)
+        reviews_text = f"📊 *Rating* ⭐ {avg_rating:.2f}/5.0\n\n"
+        reviews_text += f"*Reviews for {product['name']}* ({total_count} total)\n\n"
+
+        for review in reviews:
             rating = review.get("rating", 0)
             comment = review.get("comment", "")
-            created_at = review.get("created_at")
-            
-            stars = "⭐" * rating + "☆" * (5 - rating)
+            stars = "★" * rating + "☆" * (5 - rating)
             reviews_text += f"{stars}\n"
             if comment:
                 reviews_text += f"{comment}\n"
             reviews_text += "\n"
-    
-    keyboard_buttons = [
-        [InlineKeyboardButton(text="⬅️ Back", callback_data=f"product:{product_id}")]
-    ]
+
+    keyboard_buttons = []
+
+    star_counts = {}
+    for r in all_reviews:
+        s = r.get("rating", 0)
+        star_counts[s] = star_counts.get(s, 0) + 1
+
+    filter_row = []
+    filter_row.append(InlineKeyboardButton(
+        text=f"All{'*' if star_filter is None else ''}",
+        callback_data=_view_reviews_callback(product_id, None, 1)
+    ))
+    for s in [5, 4, 3, 2, 1]:
+        cnt = star_counts.get(s, 0)
+        filter_row.append(InlineKeyboardButton(
+            text=f"{s} ★ ({cnt})",
+            callback_data=_view_reviews_callback(product_id, s, 1)
+        ))
+    keyboard_buttons.append(filter_row)
+
+    if total_pages > 1:
+        page_row = []
+        for p in range(1, min(total_pages + 1, 7)):
+            label = f"{p}{'*' if p == page else ''}"
+            if p == 6 and total_pages > 6:
+                label = "6»"
+            page_row.append(InlineKeyboardButton(
+                text=label,
+                callback_data=_view_reviews_callback(product_id, star_filter, p)
+            ))
+        keyboard_buttons.append(page_row)
+
+    keyboard_buttons.append([InlineKeyboardButton(text="⬅️ Back to product", callback_data=f"product:{product_id}")])
     keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
-    
+
     try:
         await callback.message.edit_text(reviews_text, parse_mode="Markdown", reply_markup=keyboard)
     except:
         await callback.message.answer(reviews_text, parse_mode="Markdown", reply_markup=keyboard)
+
+
+# ---------------------------------------------------------------------------
+# Order rating handlers (purchasers only, one review per order)
+# ---------------------------------------------------------------------------
+
+async def _save_order_review(order_id: str, user_id: str, bot_id: str, rating: int, comment: str = "") -> bool:
+    """Save a review for an order. Returns True on success."""
+    from datetime import datetime
+    db = get_database()
+    orders_collection = db.orders
+    reviews_collection = db.reviews
+
+    order = await orders_collection.find_one({"_id": order_id})
+    if not order:
+        return False
+
+    product_ids = []
+    for item in order.get("items", []):
+        pid = item.get("product_id")
+        if pid:
+            product_ids.append(str(pid))
+
+    review_doc = {
+        "order_id": order_id,
+        "user_id": user_id,
+        "bot_id": bot_id,
+        "rating": rating,
+        "comment": comment or "",
+        "product_ids": product_ids,
+        "created_at": datetime.utcnow(),
+    }
+    await reviews_collection.insert_one(review_doc)
+    return True
+
+
+@router.callback_query(F.data.startswith("rate_order:"))
+async def handle_rate_order(callback: CallbackQuery):
+    """Show star selection for order rating (purchasers only)"""
+    await safe_answer_callback(callback)
+
+    order_id = callback.data.split(":")[1]
+    user_id = str(callback.from_user.id)
+
+    db = get_database()
+    orders_collection = db.orders
+    reviews_collection = db.reviews
+
+    order = await orders_collection.find_one({"_id": order_id})
+    if not order:
+        await callback.message.answer("❌ Order not found.")
+        return
+
+    if str(order.get("userId")) != user_id:
+        await callback.message.answer("❌ You can only rate your own orders.")
+        return
+
+    if order.get("paymentStatus", "").lower() != "paid":
+        await callback.message.answer("❌ You can only rate orders that have been paid.")
+        return
+
+    existing = await reviews_collection.find_one({"order_id": order_id})
+    if existing:
+        await callback.message.answer("✅ You have already rated this order. Thank you!")
+        return
+
+    text = "⭐ *Rate your order*\n\nHow would you rate your experience? Select a rating:"
+    keyboard_buttons = [
+        [
+            InlineKeyboardButton(text="1 ★", callback_data=f"rate_order_confirm:{order_id}:1"),
+            InlineKeyboardButton(text="2 ★", callback_data=f"rate_order_confirm:{order_id}:2"),
+            InlineKeyboardButton(text="3 ★", callback_data=f"rate_order_confirm:{order_id}:3"),
+            InlineKeyboardButton(text="4 ★", callback_data=f"rate_order_confirm:{order_id}:4"),
+            InlineKeyboardButton(text="5 ★", callback_data=f"rate_order_confirm:{order_id}:5"),
+        ],
+        [InlineKeyboardButton(text="⬅️ Cancel", callback_data=f"back_pay:{order_id}")],
+    ]
+    keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
+
+    try:
+        await callback.message.edit_text(text, parse_mode="Markdown", reply_markup=keyboard)
+    except:
+        await callback.message.answer(text, parse_mode="Markdown", reply_markup=keyboard)
+
+
+@router.callback_query(F.data.startswith("rate_order_confirm:"))
+async def handle_rate_order_confirm(callback: CallbackQuery):
+    """User selected a star rating - show optional comment or skip"""
+    await safe_answer_callback(callback)
+
+    parts = callback.data.split(":")
+    order_id = parts[1]
+    rating = int(parts[2])
+    user_id = str(callback.from_user.id)
+
+    bot_config = await get_bot_config()
+    bot_id = str(bot_config["_id"]) if bot_config else ""
+
+    text = f"⭐ *Rating: {rating}/5*\n\nAdd a comment? (optional)"
+    keyboard_buttons = [
+        [InlineKeyboardButton(text="Skip", callback_data=f"rate_order_skip:{order_id}:{rating}")],
+        [InlineKeyboardButton(text="Add comment", callback_data=f"rate_order_comment:{order_id}:{rating}")],
+        [InlineKeyboardButton(text="⬅️ Cancel", callback_data=f"back_pay:{order_id}")],
+    ]
+    keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
+
+    try:
+        await callback.message.edit_text(text, parse_mode="Markdown", reply_markup=keyboard)
+    except:
+        await callback.message.answer(text, parse_mode="Markdown", reply_markup=keyboard)
+
+
+@router.callback_query(F.data.startswith("rate_order_skip:"))
+async def handle_rate_order_skip(callback: CallbackQuery):
+    """Save review without comment and return to order view"""
+    await safe_answer_callback(callback)
+
+    parts = callback.data.split(":")
+    order_id = parts[1]
+    rating = int(parts[2])
+    user_id = str(callback.from_user.id)
+
+    bot_config = await get_bot_config()
+    bot_id = str(bot_config["_id"]) if bot_config else ""
+
+    success = await _save_order_review(order_id, user_id, bot_id, rating, "")
+    if success:
+        await callback.message.answer("✅ Thank you for your review!")
+        await show_payment_invoice(order_id, callback)
+    else:
+        await callback.message.answer("❌ Could not save review. Please try again.")
+
+
+@router.callback_query(F.data.startswith("rate_order_comment:"))
+async def handle_rate_order_comment(callback: CallbackQuery, state: FSMContext):
+    """Start FSM for optional comment input"""
+    await safe_answer_callback(callback)
+
+    parts = callback.data.split(":")
+    order_id = parts[1]
+    rating = int(parts[2])
+
+    await state.update_data(rate_order_id=order_id, rate_rating=rating)
+    await state.set_state(ReviewCommentStates.waiting_for_comment)
+
+    await callback.message.answer(
+        "📝 Type your comment (or /cancel to skip):"
+    )
+
+
+@router.message(ReviewCommentStates.waiting_for_comment)
+async def handle_review_comment_input(message: Message, state: FSMContext):
+    """Process review comment from user"""
+    if message.text and message.text.strip().lower() in ["/cancel", "cancel"]:
+        await state.clear()
+        await message.answer("❌ Comment cancelled.")
+        return
+
+    data = await state.get_data()
+    order_id = data.get("rate_order_id")
+    rating = data.get("rate_rating")
+    await state.clear()
+
+    if not order_id or rating is None:
+        await message.answer("❌ Session expired. Please try rating again from your order.")
+        return
+
+    user_id = str(message.from_user.id)
+    bot_config = await get_bot_config()
+    bot_id = str(bot_config["_id"]) if bot_config else ""
+    comment = (message.text or "").strip()[:500]
+
+    success = await _save_order_review(order_id, user_id, bot_id, rating, comment)
+    if success:
+        await message.answer("✅ Thank you for your review!")
+    else:
+        await message.answer("❌ Could not save review. Please try again.")
 
 
 @router.callback_query(F.data.startswith("add_cart:"))
@@ -2985,8 +3233,16 @@ async def show_payment_invoice(invoice_id: str, callback: CallbackQuery | Messag
             InlineKeyboardButton(text="📷 Show QR", callback_data=f"qr:{invoice_id}"),
             InlineKeyboardButton(text="🔄 Refresh", callback_data=f"refresh_pay:{invoice_id}")
         ],
-        [InlineKeyboardButton(text="⬅️ Back", callback_data=f"back_pay:{invoice_id}")]
     ]
+
+    # Add "Rate this order" button when paid and not yet rated
+    if order_status == "Paid" and order:
+        reviews_collection = db.reviews
+        existing_review = await reviews_collection.find_one({"order_id": invoice_id})
+        if not existing_review:
+            keyboard_buttons.append([InlineKeyboardButton(text="⭐ Rate this order", callback_data=f"rate_order:{invoice_id}")])
+
+    keyboard_buttons.append([InlineKeyboardButton(text="⬅️ Back", callback_data=f"back_pay:{invoice_id}")])
     keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
     
     try:
