@@ -365,9 +365,6 @@ export default function Home() {
                       </div>
                     )}
 
-                    {/* Description */}
-                    <p className={`text-sm mb-4 ${isFeatured ? 'text-white/90' : 'text-gray-600'}`}>{bot.description || 'No description available.'}</p>
-
                     {/* Statistics Section */}
                     <div className={`grid grid-cols-3 gap-4 mb-4 pb-4 ${isFeatured ? 'border-b border-white/20' : 'border-b border-gray-200'}`}>
                       <div>
