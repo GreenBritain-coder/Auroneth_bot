@@ -3521,7 +3521,7 @@ async def show_payment_invoice(invoice_id: str, callback: CallbackQuery | Messag
         if not existing_review:
             keyboard_buttons.append([InlineKeyboardButton(text="⭐ Rate this order", callback_data=f"rate_order:{invoice_id}")])
 
-    keyboard_buttons.append([InlineKeyboardButton(text="⬅️ Back", callback_data=f"back_pay:{invoice_id}")])
+    keyboard_buttons.append([InlineKeyboardButton(text="⬅️ Back to Orders", callback_data=f"back_pay:{invoice_id}")])
     keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
     
     try:
@@ -4248,11 +4248,11 @@ async def handle_refresh_payment(callback: CallbackQuery):
 
 @router.callback_query(F.data.startswith("back_pay:"))
 async def handle_back_payment(callback: CallbackQuery):
-    """Handle back from payment invoice - return to checkout"""
+    """Handle back from payment invoice - return to Orders list (invoices are not editable once created)"""
     await safe_answer_callback(callback)
     
-    invoice_id = callback.data.split(":")[1]
-    await show_checkout_invoice(invoice_id, callback)
+    from handlers.orders import show_user_orders
+    await show_user_orders(callback)
 
 
 async def process_checkout_with_address(callback: CallbackQuery, selected_currency: str, address: Optional[str]):
