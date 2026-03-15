@@ -2110,6 +2110,7 @@ async def handle_checkout(callback: CallbackQuery):
         "payment_method": None,
         "delivery_address": None,
         "delivery_method": None,
+        "shipping_cost": 0,
         "waiting_for_discount": False,  # Initialize as False
         "waiting_for_address": False,  # Initialize as False
         "created_at": datetime.utcnow(),
@@ -2234,20 +2235,25 @@ async def show_checkout_invoice(invoice_id: str, callback: CallbackQuery):
                 item_total = combined_item['price'] * combined_item['quantity']
                 checkout_text += f"  ({combined_item['quantity']}x = {item_total} {currency})\n"
     
-    # Apply discount if any
+    # Apply discount and add shipping cost
     discount_amount = invoice.get("discount_amount", 0)
-    final_total = total - discount_amount
+    shipping_cost = invoice.get("shipping_cost", 0) or 0
+    final_total = total - discount_amount + shipping_cost
     
     # Format amounts based on currency
     if currency.upper() == "GBP":
         checkout_text += f"\n*Subtotal:* £{total:.2f}\n"
         if discount_amount > 0:
             checkout_text += f"*Discount:* -£{discount_amount:.2f}\n"
+        if shipping_cost > 0:
+            checkout_text += f"*Shipping:* £{shipping_cost:.2f}\n"
         checkout_text += f"*Total:* £{final_total:.2f}\n"
     else:
         checkout_text += f"\n*Subtotal:* {total:.2f} {currency}\n"
         if discount_amount > 0:
             checkout_text += f"*Discount:* -{discount_amount:.2f} {currency}\n"
+        if shipping_cost > 0:
+            checkout_text += f"*Shipping:* {shipping_cost:.2f} {currency}\n"
         checkout_text += f"*Total:* {final_total:.2f} {currency}\n"
     
     # Show selected options with green ticks
@@ -2274,7 +2280,12 @@ async def show_checkout_invoice(invoice_id: str, callback: CallbackQuery):
         checkout_text += "○ 📍 Address: Not entered\n"
     
     if invoice.get("delivery_method"):
-        checkout_text += f"✅ 🚚 Delivery: {invoice['delivery_method']}\n"
+        ship_cost = invoice.get("shipping_cost", 0) or 0
+        if ship_cost > 0:
+            cost_str = _format_shipping_cost(ship_cost, currency)
+            checkout_text += f"✅ 🚚 Delivery: {invoice['delivery_method']} ({cost_str})\n"
+        else:
+            checkout_text += f"✅ 🚚 Delivery: {invoice['delivery_method']}\n"
     else:
         checkout_text += "○ 🚚 Delivery: Not selected\n"
     
@@ -2670,6 +2681,27 @@ async def handle_checkout_address(callback: CallbackQuery):
     print(f"[Address Button] Set waiting_for_address=True for invoice {invoice_id}, user_id={invoice.get('user_id')}, bot_id={invoice.get('bot_id')}")
 
 
+def _get_shipping_costs(bot_config: dict) -> dict:
+    """Get shipping costs from bot config or use defaults."""
+    methods = bot_config.get("shipping_methods") if bot_config else None
+    defaults = {"STD": 0, "EXP": 5, "NXT": 10}
+    if methods and isinstance(methods, list):
+        out = dict(defaults)
+        for m in methods:
+            if isinstance(m, dict) and m.get("code"):
+                cost = m.get("cost", 0)
+                out[m["code"]] = float(cost) if cost is not None else 0
+        return out
+    return defaults
+
+
+def _format_shipping_cost(cost: float, currency: str) -> str:
+    """Format shipping cost for display."""
+    if currency and currency.upper() == "GBP":
+        return f"£{cost:.2f}"
+    return f"{cost:.2f} {currency or ''}"
+
+
 @router.callback_query(F.data.startswith("del:"))
 async def handle_checkout_delivery(callback: CallbackQuery):
     """Handle delivery method selection"""
@@ -2685,11 +2717,25 @@ async def handle_checkout_delivery(callback: CallbackQuery):
         await callback.message.answer("❌ Invoice not found.")
         return
     
-    # Delivery method options - use short prefixes
+    # Get shipping costs from bot config
+    bot_config = await get_bot_config()
+    costs = _get_shipping_costs(bot_config)
+    currency = invoice.get("currency", "GBP")
+    
+    # Delivery method options with cost in button text
     keyboard_buttons = [
-        [InlineKeyboardButton(text="🚚 Standard Delivery", callback_data=f"del_sel:{invoice_id}:STD")],
-        [InlineKeyboardButton(text="⚡ Express Delivery", callback_data=f"del_sel:{invoice_id}:EXP")],
-        [InlineKeyboardButton(text="📦 Next Day Delivery", callback_data=f"del_sel:{invoice_id}:NXT")],
+        [InlineKeyboardButton(
+            text=f"🚚 Standard Delivery - {_format_shipping_cost(costs.get('STD', 0), currency)}",
+            callback_data=f"del_sel:{invoice_id}:STD"
+        )],
+        [InlineKeyboardButton(
+            text=f"⚡ Express Delivery - {_format_shipping_cost(costs.get('EXP', 0), currency)}",
+            callback_data=f"del_sel:{invoice_id}:EXP"
+        )],
+        [InlineKeyboardButton(
+            text=f"📦 Next Day Delivery - {_format_shipping_cost(costs.get('NXT', 0), currency)}",
+            callback_data=f"del_sel:{invoice_id}:NXT"
+        )],
         [InlineKeyboardButton(text="❌ Cancel", callback_data=f"back:{invoice_id}")]
     ]
     
@@ -2721,6 +2767,11 @@ async def handle_checkout_delivery_select(callback: CallbackQuery):
     }
     delivery_method = delivery_map.get(delivery_code, delivery_code)
     
+    # Get shipping cost for selected method
+    bot_config = await get_bot_config()
+    costs = _get_shipping_costs(bot_config)
+    shipping_cost = float(costs.get(delivery_code, 0) or 0)
+    
     db = get_database()
     invoices_collection = db.invoices
     from datetime import datetime
@@ -2733,7 +2784,12 @@ async def handle_checkout_delivery_select(callback: CallbackQuery):
     
     await invoices_collection.update_one(
         {"_id": invoice["_id"]},
-        {"$set": {"delivery_method": delivery_method, "updated_at": datetime.utcnow()}}
+        {"$set": {
+            "delivery_method": delivery_method,
+            "shipping_cost": shipping_cost,
+            "shipping_method_code": delivery_code,
+            "updated_at": datetime.utcnow()
+        }}
     )
     
     await show_checkout_invoice(invoice_id, callback)
@@ -2895,13 +2951,13 @@ async def handle_confirm_checkout(callback: CallbackQuery):
     invoice_currency = invoice.get("currency", "GBP")
     selected_currency = invoice.get("payment_method", "BTC")
     
-    # Use the invoice's total field (already calculated correctly with discount applied)
-    # This is more reliable than recalculating from items
+    # Use the invoice's total field (subtotal - discount + shipping)
     total = invoice.get("total", 0)
     discount_amount = invoice.get("discount_amount", 0)
-    final_total = total - discount_amount  # This is the amount to charge
+    shipping_cost = invoice.get("shipping_cost", 0) or 0
+    final_total = total - discount_amount + shipping_cost  # Amount to charge
     
-    # Use final_total as combined_amount (already has discount applied)
+    # Use final_total as combined_amount (includes discount and shipping)
     combined_amount = final_total
     
     # Debug: Log invoice items to verify quantities
@@ -2910,7 +2966,7 @@ async def handle_confirm_checkout(callback: CallbackQuery):
     for idx, item in enumerate(invoice_items):
         print(f"[Checkout]   Item {idx+1}: product_id={item.get('product_id')}, quantity={item.get('quantity')}, price={item.get('price')}")
     
-    print(f"[Checkout] Invoice total: {total} {invoice_currency}, Discount: {discount_amount} {invoice_currency}, Final: {combined_amount} {invoice_currency}")
+    print(f"[Checkout] Invoice total: {total} {invoice_currency}, Discount: {discount_amount}, Shipping: {shipping_cost}, Final: {combined_amount} {invoice_currency}")
     
     # OPTIMIZATION: Run product fetching and currency conversion in parallel
     import asyncio
@@ -3027,12 +3083,14 @@ async def handle_confirm_checkout(callback: CallbackQuery):
         "quantity": sum([item["item"]["quantity"] for item in order_items]),
         "variation_index": order_items[0]["item"].get("variation_index") if order_items else None,
         "paymentStatus": "pending",
-        "amount": combined_amount,  # Store original amount in invoice currency
+        "amount": combined_amount,  # Store original amount in invoice currency (includes shipping)
         "commission": commission,
         "currency": selected_currency.upper(),  # Store payment currency (BTC, LTC, etc.)
         "timestamp": datetime.utcnow(),
         "encrypted_address": invoice.get("delivery_address"),
         "delivery_method": invoice.get("delivery_method"),
+        "shipping_cost": shipping_cost,
+        "shipping_method_code": invoice.get("shipping_method_code"),
         "discount_code": invoice.get("discount_code"),
         "discount_amount": discount_amount,
         "items": invoice.get("items", []),  # Store all items in the order

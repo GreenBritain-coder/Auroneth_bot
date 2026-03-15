@@ -41,6 +41,7 @@ export default function EditBotPage() {
     rating_count: '', // Number of ratings
     vendor_pgp_key: '', // Vendor PGP key
     payment_methods: ['BTC', 'LTC'] as string[], // Supported payment methods (BTC/LTC only)
+    shipping_methods: { STD: 0, EXP: 5, NXT: 10 } as Record<string, number>, // Delivery method costs (Standard, Express, Next Day)
   });
   const [updatingProfilePic, setUpdatingProfilePic] = useState(false);
   const [userRole, setUserRole] = useState<string | null>(null);
@@ -132,6 +133,17 @@ export default function EditBotPage() {
           payment_methods: (botData.payment_methods && Array.isArray(botData.payment_methods) && botData.payment_methods.length > 0) 
             ? botData.payment_methods.filter((m: string) => m === 'BTC' || m === 'LTC') // Only allow BTC/LTC
             : ['BTC', 'LTC'], // Default to both
+          shipping_methods: (() => {
+            const methods = botData.shipping_methods;
+            if (methods && Array.isArray(methods) && methods.length > 0) {
+              const out: Record<string, number> = {};
+              methods.forEach((m: { code: string; name: string; cost: number }) => {
+                out[m.code] = typeof m.cost === 'number' ? m.cost : 0;
+              });
+              return { STD: 0, EXP: 5, NXT: 10, ...out };
+            }
+            return { STD: 0, EXP: 5, NXT: 10 };
+          })(),
           menu_inline_buttons: (() => {
             // If menu_inline_buttons exist, use them; otherwise auto-generate from main_buttons
             if (botData.menu_inline_buttons && Array.isArray(botData.menu_inline_buttons) && botData.menu_inline_buttons.length > 0) {
@@ -288,6 +300,11 @@ export default function EditBotPage() {
         rating_count: formData.rating_count || '',
         vendor_pgp_key: formData.vendor_pgp_key || '',
         payment_methods: formData.payment_methods.filter(m => m === 'BTC' || m === 'LTC'), // Only save BTC/LTC
+        shipping_methods: [
+          { code: 'STD', name: 'Standard Delivery', cost: Number(formData.shipping_methods.STD) || 0 },
+          { code: 'EXP', name: 'Express Delivery', cost: Number(formData.shipping_methods.EXP) || 0 },
+          { code: 'NXT', name: 'Next Day Delivery', cost: Number(formData.shipping_methods.NXT) || 0 },
+        ],
       };
 
       // Only include categories and featured if user is super-admin
@@ -712,6 +729,49 @@ export default function EditBotPage() {
                   onChange={(e) => setFormData({ ...formData, routes: e.target.value })}
                 />
                 <p className="mt-1 text-sm text-gray-500">Shipping routes displayed in welcome message</p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Delivery Method Costs</label>
+                <p className="mt-1 text-sm text-gray-500 mb-2">Set the cost for each delivery method (in order currency, e.g. GBP)</p>
+                <div className="space-y-2">
+                  <div className="flex items-center gap-4">
+                    <label className="text-sm text-gray-600 w-40">Standard Delivery</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      className="block w-24 border border-gray-300 rounded-md px-3 py-2"
+                      placeholder="0"
+                      value={formData.shipping_methods.STD ?? 0}
+                      onChange={(e) => setFormData({ ...formData, shipping_methods: { ...formData.shipping_methods, STD: parseFloat(e.target.value) || 0 } })}
+                    />
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <label className="text-sm text-gray-600 w-40">Express Delivery</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      className="block w-24 border border-gray-300 rounded-md px-3 py-2"
+                      placeholder="5"
+                      value={formData.shipping_methods.EXP ?? 5}
+                      onChange={(e) => setFormData({ ...formData, shipping_methods: { ...formData.shipping_methods, EXP: parseFloat(e.target.value) || 0 } })}
+                    />
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <label className="text-sm text-gray-600 w-40">Next Day Delivery</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      className="block w-24 border border-gray-300 rounded-md px-3 py-2"
+                      placeholder="10"
+                      value={formData.shipping_methods.NXT ?? 10}
+                      onChange={(e) => setFormData({ ...formData, shipping_methods: { ...formData.shipping_methods, NXT: parseFloat(e.target.value) || 0 } })}
+                    />
+                  </div>
+                </div>
               </div>
 
               <div>

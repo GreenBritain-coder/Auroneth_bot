@@ -31,6 +31,7 @@ export interface IBot extends Document {
   webhook_url?: string; // Webhook URL for payment callbacks (e.g., "https://your-domain.com" or "http://localhost:8000")
   payment_methods?: string[]; // Supported payment methods (e.g., ["BTC", "LTC"])
   cut_off_time?: string; // Cut-off time in HH:MM format (e.g., "14:30")
+  shipping_methods?: Array<{ code: string; name: string; cost: number }>; // Delivery methods with costs (STD, EXP, NXT)
 }
 
 const BotSchema = new Schema<IBot>({
