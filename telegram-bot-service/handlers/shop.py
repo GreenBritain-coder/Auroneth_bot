@@ -3482,18 +3482,23 @@ async def show_payment_invoice(invoice_id: str, callback: CallbackQuery | Messag
         discount_amount = invoice.get("discount_amount", 0)
         invoice_text += f"*Discount:* {invoice['discount_code']} (-{discount_amount:.2f} {invoice.get('currency', 'GBP')})\n"
     
-    # Show delivery
+    # Show delivery and shipping cost
     if invoice.get("delivery_method"):
-        invoice_text += f"*Delivery:* {invoice['delivery_method']}\n"
+        shipping_cost = invoice.get("shipping_cost", 0) or 0
+        if shipping_cost > 0:
+            invoice_text += f"*Delivery:* {invoice['delivery_method']} (+{shipping_cost:.2f} {invoice.get('currency', 'GBP')})\n"
+        else:
+            invoice_text += f"*Delivery:* {invoice['delivery_method']}\n"
     
     # Show notes if they exist
     if invoice.get("notes"):
         invoice_text += f"\n*📝 Notes:*\n{invoice['notes']}\n"
     
-    # Show total
+    # Show total (subtotal - discount + shipping)
     total = invoice.get("total", 0)
     discount_amount = invoice.get("discount_amount", 0)
-    final_total = total - discount_amount
+    shipping_cost = invoice.get("shipping_cost", 0) or 0
+    final_total = total - discount_amount + shipping_cost
     currency = invoice.get("currency", "GBP")
     invoice_text += f"*Total:* {final_total:.2f} {currency}\n"
     
@@ -3594,13 +3599,18 @@ async def show_cancelled_order_invoice(invoice_id: str, callback: CallbackQuery 
         else:
             cancelled_text += f"\n*Discount:* -{currency_symbol}{discount_amount:.2f}\n"
 
-    # Delivery
+    # Delivery and shipping
     if invoice.get("delivery_method"):
-        cancelled_text += f"*Delivery:* {invoice['delivery_method']}\n"
+        shipping_cost = invoice.get("shipping_cost", 0) or 0
+        if shipping_cost > 0:
+            cancelled_text += f"*Delivery:* {invoice['delivery_method']} (+{currency_symbol}{shipping_cost:.2f})\n"
+        else:
+            cancelled_text += f"*Delivery:* {invoice['delivery_method']}\n"
 
-    # Total
+    # Total (subtotal - discount + shipping)
     total = invoice.get("total", 0)
-    final_total = total - discount_amount
+    shipping_cost = invoice.get("shipping_cost", 0) or 0
+    final_total = total - discount_amount + shipping_cost
     if currency.upper() == "GBP":
         cancelled_text += f"*Total:* £{final_total:.2f}\n"
     else:
