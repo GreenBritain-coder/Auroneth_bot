@@ -770,17 +770,17 @@ async def handle_product(callback: CallbackQuery):
         # No variations, show advanced quantity selection interface
         await show_product_quantity_interface(callback, product, variation_index=None)
     else:
-        # Show variations
+        # Show product details with variation options
         keyboard_buttons = []
         for idx, variation in enumerate(variations):
             variation_price = product['base_price'] + variation.get('price_modifier', 0)
             stock_info = f" (Stock: {variation.get('stock', '∞')})" if variation.get('stock') is not None else ""
-        keyboard_buttons.append([
-            InlineKeyboardButton(
-                text=f"{variation['name']} - {variation_price} {product['currency']}{stock_info}",
-                callback_data=f"variation:{product_id}:{idx}"
-            )
-        ])
+            keyboard_buttons.append([
+                InlineKeyboardButton(
+                    text=f"{variation['name']} - £{variation_price:.2f}{stock_info}",
+                    callback_data=f"variation:{product_id}:{idx}"
+                )
+            ])
         subcat_id = product.get('subcategory_id') or ''
         cat_id = product.get('category_id') or ''
         if subcat_id:
@@ -793,11 +793,44 @@ async def handle_product(callback: CallbackQuery):
             InlineKeyboardButton(text="⬅️ Back", callback_data=back_data)
         ])
         keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
-        
+
+        # Build product detail message
+        currency = product.get('currency', 'GBP')
+        currency_symbol = '£' if currency == 'GBP' else '$' if currency == 'USD' else currency + ' '
+        price_range = f"{currency_symbol}{product['base_price']:.2f}"
+        if variations:
+            max_price = product['base_price'] + max(v.get('price_modifier', 0) for v in variations)
+            if max_price != product['base_price']:
+                price_range += f" - {currency_symbol}{max_price:.2f}"
+
+        product_text = f"🛍️ *{product['name']}*\n\n"
+        if product.get('description'):
+            desc = product['description'][:300]
+            if len(product['description']) > 300:
+                desc += "..."
+            product_text += f"{desc}\n\n"
+        product_text += f"💰 *Price:* {price_range}\n\n"
+        product_text += "Select an option:"
+
+        image_url = product.get('image_url', '')
         try:
-            await callback.message.edit_text("📦 *Select Variation*", parse_mode="Markdown", reply_markup=keyboard)
-        except:
-            await callback.message.answer("📦 *Select Variation*", parse_mode="Markdown", reply_markup=keyboard)
+            if image_url:
+                from aiogram.types import InputMediaPhoto
+                await callback.message.delete()
+                await callback.message.answer_photo(
+                    photo=image_url,
+                    caption=product_text,
+                    parse_mode="Markdown",
+                    reply_markup=keyboard
+                )
+            else:
+                await callback.message.edit_text(product_text, parse_mode="Markdown", reply_markup=keyboard)
+        except Exception as e:
+            print(f"[Product] Image send failed: {e}, falling back to text")
+            try:
+                await callback.message.edit_text(product_text, parse_mode="Markdown", reply_markup=keyboard)
+            except:
+                await callback.message.answer(product_text, parse_mode="Markdown", reply_markup=keyboard)
 
 
 @router.callback_query(F.data.startswith("variation:"))
