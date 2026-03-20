@@ -390,8 +390,9 @@ async def show_welcome_message(message: Message, bot_config: dict, secret_phrase
 
 
 async def _build_menu_buttons(bot_config: dict, user_id: str, bot_id: str):
-    """Build inline keyboard buttons from custom_buttons (unified system).
-    Returns a list of button rows ready for InlineKeyboardMarkup.
+    """Build inline keyboard with fixed system layout + custom buttons.
+    System buttons have a fixed, identical layout across ALL bots.
+    Custom buttons (vendor-defined) render between Reviews and Shop rows, max 3 per row.
     """
     import re
     from utils.bottom_menu import get_menu_stats
@@ -399,122 +400,66 @@ async def _build_menu_buttons(bot_config: dict, user_id: str, bot_id: str):
     order_count, cart_display = await get_menu_stats(user_id, bot_id)
     vendor_pgp_key = bot_config.get("vendor_pgp_key", "")
 
-    custom_buttons = bot_config.get("custom_buttons", [])
-    has_system = any(b.get("type") == "system" for b in custom_buttons) if custom_buttons else False
+    rows = []
 
-    if has_system and custom_buttons:
-        # Unified system: entire menu from custom_buttons
-        enabled_buttons = [b for b in custom_buttons if b.get("enabled", True)]
-        # Filter out PGP if vendor has no pgp key
-        enabled_buttons = [
-            b for b in enabled_buttons
-            if not (b.get("type") == "system" and b.get("action") == "pgp" and not vendor_pgp_key)
-        ]
-        enabled_buttons.sort(key=lambda b: b.get("order", 0))
-
-        inline_keyboard_buttons = []
-        for i in range(0, len(enabled_buttons), 2):
-            button_row = []
-            for j in range(2):
-                if i + j >= len(enabled_buttons):
-                    break
-                btn = enabled_buttons[i + j]
-                label = btn.get("label", "")
-                btn_type = btn.get("type", "text")
-                action = btn.get("action", "")
-
-                if btn_type == "system":
-                    # Inject dynamic data into label
-                    if action == "orders":
-                        label = f"{label} ({order_count})"
-                    elif action == "view_cart":
-                        label = f"🛒 {cart_display}"
-                    button_row.append(InlineKeyboardButton(text=label, callback_data=action))
-                elif btn_type == "url" and btn.get("url"):
-                    button_row.append(InlineKeyboardButton(text=label, url=btn["url"]))
-                else:
-                    cb_data = re.sub(r'\s+', '_', re.sub(r'[^\w\s]', '', label).lower().strip())
-                    button_row.append(InlineKeyboardButton(text=label, callback_data=cb_data))
-
-            if button_row:
-                inline_keyboard_buttons.append(button_row)
-
-        return inline_keyboard_buttons
-
-    # FALLBACK: legacy layout for bots without unified custom_buttons
-    inline_keyboard_buttons = []
-
-    # First row: Reviews
-    inline_keyboard_buttons.append([
+    # === ROW 1: Reviews (always first) ===
+    rows.append([
         InlineKeyboardButton(text="⭐ Reviews", callback_data="view_all_reviews")
     ])
 
-    # Custom / main_buttons
-    if custom_buttons and isinstance(custom_buttons, list) and len(custom_buttons) > 0:
-        enabled_buttons = [
-            b for b in custom_buttons
-            if b.get("enabled", True) and re.sub(r'[^\w\s]', '', str(b.get("label", "")).lower()).strip() != "orders"
-        ]
-        enabled_buttons.sort(key=lambda b: b.get("order", 0))
-        for i in range(0, len(enabled_buttons), 2):
-            button_row = []
-            btn1 = enabled_buttons[i]
-            label1 = btn1.get("label", "")
-            if btn1.get("type") == "url" and btn1.get("url"):
-                button_row.append(InlineKeyboardButton(text=label1, url=btn1["url"]))
-            else:
-                action1 = re.sub(r'\s+', '_', re.sub(r'[^\w\s]', '', label1).lower().strip())
-                button_row.append(InlineKeyboardButton(text=label1, callback_data=action1))
-            if i + 1 < len(enabled_buttons):
-                btn2 = enabled_buttons[i + 1]
-                label2 = btn2.get("label", "")
-                if btn2.get("type") == "url" and btn2.get("url"):
-                    button_row.append(InlineKeyboardButton(text=label2, url=btn2["url"]))
-                else:
-                    action2 = re.sub(r'\s+', '_', re.sub(r'[^\w\s]', '', label2).lower().strip())
-                    button_row.append(InlineKeyboardButton(text=label2, callback_data=action2))
-            inline_keyboard_buttons.append(button_row)
-    else:
+    # === CUSTOM BUTTONS (vendor-defined, between Reviews and Shop, max 3 per row) ===
+    custom_buttons = bot_config.get("custom_buttons", [])
+    # Only include non-system, enabled buttons
+    custom = [
+        b for b in custom_buttons
+        if b.get("type") != "system" and b.get("enabled", True)
+    ]
+    # Also check legacy main_buttons if no custom buttons exist
+    if not custom:
         main_buttons = bot_config.get("main_buttons", [])
         main_buttons = [btn for btn in main_buttons if btn and btn.strip()] if isinstance(main_buttons, list) else []
-        main_buttons_filtered = [b for b in main_buttons if re.sub(r'[^\w\s]', '', str(b).lower()).strip() != "orders"]
-        if main_buttons_filtered and len(main_buttons_filtered) > 0:
-            for i in range(0, len(main_buttons_filtered), 2):
-                button_row = []
-                button_text_clean = re.sub(r'[^\w\s]', '', main_buttons_filtered[i])
-                callback_data_1 = re.sub(r'\s+', '_', button_text_clean.lower().strip())
-                button_row.append(InlineKeyboardButton(
-                    text=main_buttons_filtered[i],
-                    callback_data=callback_data_1
-                ))
-                if i + 1 < len(main_buttons_filtered):
-                    button_text_clean_2 = re.sub(r'[^\w\s]', '', main_buttons_filtered[i + 1])
-                    callback_data_2 = re.sub(r'\s+', '_', button_text_clean_2.lower().strip())
-                    button_row.append(InlineKeyboardButton(
-                        text=main_buttons_filtered[i + 1],
-                        callback_data=callback_data_2
-                    ))
-                inline_keyboard_buttons.append(button_row)
+        # Convert to custom button format, excluding system names
+        system_names = {"shop", "orders", "wishlist", "cart", "contact", "about", "reviews", "pgp"}
+        for btn_text in main_buttons:
+            normalized = re.sub(r'[^\w\s]', '', str(btn_text).lower()).strip()
+            if normalized not in system_names:
+                custom.append({"label": btn_text, "type": "text", "enabled": True, "order": len(custom)})
 
-    # Bottom rows: Orders | Wishlist | Cart, then Contact | PGP? | About
-    inline_keyboard_buttons.append([
+    custom.sort(key=lambda b: b.get("order", 0))
+    for i in range(0, len(custom), 3):
+        button_row = []
+        for btn in custom[i:i+3]:
+            label = btn.get("label", "")
+            if btn.get("type") == "url" and btn.get("url"):
+                button_row.append(InlineKeyboardButton(text=label, url=btn["url"]))
+            else:
+                cb_data = re.sub(r'\s+', '_', re.sub(r'[^\w\s]', '', label).lower().strip())
+                button_row.append(InlineKeyboardButton(text=label, callback_data=cb_data))
+        if button_row:
+            rows.append(button_row)
+
+    # === FIXED SYSTEM ROWS (identical across all bots) ===
+
+    # Shop + Orders
+    rows.append([
+        InlineKeyboardButton(text="🛍️ Shop", callback_data="shop"),
         InlineKeyboardButton(text=f"📦 Orders ({order_count})", callback_data="orders"),
+    ])
+
+    # Wishlist + Cart
+    rows.append([
         InlineKeyboardButton(text="❤️ Wishlist", callback_data="view_wishlist"),
         InlineKeyboardButton(text=f"🛒 {cart_display}", callback_data="view_cart"),
     ])
-    if vendor_pgp_key:
-        inline_keyboard_buttons.append([
-            InlineKeyboardButton(text="💬 Contact", callback_data="contact"),
-            InlineKeyboardButton(text="🔐 PGP", callback_data="pgp"),
-            InlineKeyboardButton(text="ℹ️ About", callback_data="about"),
-        ])
-    else:
-        inline_keyboard_buttons.append([
-            InlineKeyboardButton(text="💬 Contact", callback_data="contact"),
-            InlineKeyboardButton(text="ℹ️ About", callback_data="about"),
-        ])
 
-    return inline_keyboard_buttons
+    # Contact + PGP? + About
+    bottom = [InlineKeyboardButton(text="💬 Contact", callback_data="contact")]
+    if vendor_pgp_key:
+        bottom.append(InlineKeyboardButton(text="🔐 PGP", callback_data="pgp"))
+    bottom.append(InlineKeyboardButton(text="ℹ️ About", callback_data="about"))
+    rows.append(bottom)
+
+    return rows
 
 
 @router.callback_query(F.data == "menu")

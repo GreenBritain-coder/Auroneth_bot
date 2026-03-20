@@ -572,8 +572,8 @@ export default function EditBotPage() {
           <div className="border-t pt-4 mt-4">
             <div className="flex items-center justify-between mb-4">
               <div>
-                <h3 className="text-lg font-medium text-gray-900">Menu Buttons</h3>
-                <p className="text-sm text-gray-500">Configure all buttons that appear in the bot menu. Drag to reorder. System buttons can be renamed and moved; locked ones cannot be disabled or deleted.</p>
+                <h3 className="text-lg font-medium text-gray-900">Custom Menu Buttons</h3>
+                <p className="text-sm text-gray-500">Add custom buttons between Reviews and Shop. System buttons (Shop, Orders, Wishlist, Cart, Contact, About) have a fixed layout across all bots. Drag to reorder custom buttons.</p>
               </div>
               <button
                 type="button"
@@ -600,7 +600,7 @@ export default function EditBotPage() {
             <div className="flex flex-col lg:flex-row gap-6">
               {/* Button Builder */}
               <div className="flex-1 min-w-0">
-                {formData.custom_buttons.length === 0 && (
+                {formData.custom_buttons.filter(b => b.type !== 'system').length === 0 && (
                   <div className="text-center py-8 border-2 border-dashed border-gray-300 rounded-lg">
                     <p className="text-gray-500">No custom buttons configured. Click &quot;Add Button&quot; to create one.</p>
                   </div>
@@ -608,6 +608,7 @@ export default function EditBotPage() {
 
                 <div className="space-y-1">
                   {formData.custom_buttons
+                    .filter(b => b.type !== 'system')
                     .sort((a, b) => a.order - b.order)
                     .map((btn, index) => {
                       const isSystem = btn.type === 'system';
@@ -823,40 +824,55 @@ export default function EditBotPage() {
                           </div>
                         </div>
 
-                        {/* Inline keyboard buttons - rendered from custom_buttons */}
+                        {/* Inline keyboard preview - fixed system layout + custom buttons */}
                         <div className="mt-1 space-y-1">
                           {(() => {
-                            const enabledBtns = formData.custom_buttons
-                              .filter(b => b.enabled)
+                            const btnStyle = "flex-1 text-center py-1.5 px-2 rounded text-[12px] font-medium truncate";
+                            const btnColor = { backgroundColor: '#4a90d9', color: '#ffffff' };
+                            const B = ({ label }: { label: string }) => (
+                              <div className={btnStyle} style={btnColor}>{label}</div>
+                            );
+
+                            // Custom buttons only (non-system, enabled, max 3 per row)
+                            const customBtns = formData.custom_buttons
+                              .filter(b => b.enabled && b.type !== 'system')
                               .sort((a, b) => a.order - b.order);
-                            const rows: Array<typeof enabledBtns> = [];
-                            for (let i = 0; i < enabledBtns.length; i += 2) {
-                              rows.push(enabledBtns.slice(i, i + 2));
+                            const customRows: Array<typeof customBtns> = [];
+                            for (let i = 0; i < customBtns.length; i += 3) {
+                              customRows.push(customBtns.slice(i, i + 3));
                             }
-                            return rows.map((row, ri) => (
-                              <div key={ri} className="flex gap-1">
-                                {row.map((b, bi) => {
-                                  let displayLabel = b.label || 'Button';
-                                  // Show static preview labels for dynamic buttons
-                                  const action = (b as any).action;
-                                  if (action === 'orders') displayLabel = b.label || '\uD83D\uDCE6 Orders';
-                                  if (action === 'view_cart') displayLabel = b.label || '\uD83D\uDED2 Cart';
-                                  return (
-                                    <div
-                                      key={bi}
-                                      className="flex-1 text-center py-1.5 px-2 rounded text-[12px] font-medium truncate"
-                                      style={{ backgroundColor: '#4a90d9', color: '#ffffff' }}
-                                    >
-                                      {displayLabel}
-                                      {b.type === 'url' && (
-                                        <span className="ml-1 inline-block align-middle" style={{ fontSize: '9px' }}>&#8599;</span>
-                                      )}
-                                    </div>
-                                  );
-                                })}
-                                {row.length === 1 && <div className="flex-1" />}
-                              </div>
-                            ));
+
+                            const hasPgp = !!(formData as any).vendor_pgp_key;
+
+                            return (
+                              <>
+                                {/* Fixed: Reviews */}
+                                <div className="flex gap-1"><B label="⭐ Reviews" /></div>
+                                {/* Custom buttons (vendor-defined) */}
+                                {customRows.map((row, ri) => (
+                                  <div key={`c${ri}`} className="flex gap-1">
+                                    {row.map((b, bi) => (
+                                      <div key={bi} className={btnStyle} style={btnColor}>
+                                        {b.label || 'Button'}
+                                        {b.type === 'url' && <span className="ml-1" style={{ fontSize: '9px' }}>&#8599;</span>}
+                                      </div>
+                                    ))}
+                                    {row.length === 1 && <><div className="flex-1" /><div className="flex-1" /></>}
+                                    {row.length === 2 && <div className="flex-1" />}
+                                  </div>
+                                ))}
+                                {/* Fixed: Shop + Orders */}
+                                <div className="flex gap-1"><B label="🛍️ Shop" /><B label="📦 Orders (0)" /></div>
+                                {/* Fixed: Wishlist + Cart */}
+                                <div className="flex gap-1"><B label="❤️ Wishlist" /><B label="🛒 Cart (£0.00)" /></div>
+                                {/* Fixed: Contact + PGP? + About */}
+                                <div className="flex gap-1">
+                                  <B label="💬 Contact" />
+                                  {hasPgp && <B label="🔐 PGP" />}
+                                  <B label="ℹ️ About" />
+                                </div>
+                              </>
+                            );
                           })()}
                         </div>
                       </div>
