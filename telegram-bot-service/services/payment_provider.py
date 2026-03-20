@@ -1,6 +1,6 @@
 """
 Payment provider selection and invoice creation
-Tries providers in order: CryptAPI > Blockonomics > CoinPayments (no SHKeeper)
+Tries providers in order: SHKeeper > CryptAPI > Blockonomics > CoinPayments
 """
 import os
 from typing import Dict, Optional
@@ -9,7 +9,7 @@ from typing import Dict, Optional
 def create_payment_invoice(amount: float, currency: str, order_id: str, buyer_email: str = "", fiat_currency: str = "GBP", fiat_amount: float = None, bot_config: dict = None) -> Dict:
     """
     Create payment invoice using available payment provider
-    Tries providers in order: CryptAPI > Blockonomics > CoinPayments
+    Tries providers in order: SHKeeper > CryptAPI > Blockonomics > CoinPayments
     
     Args:
         amount: Payment amount
@@ -20,7 +20,28 @@ def create_payment_invoice(amount: float, currency: str, order_id: str, buyer_em
     Returns:
         Dict with success status and invoice details or error
     """
-    # Try CryptAPI first (simple, no KYC, no node setup needed)
+    # Try SHKeeper first (self-hosted, no fees, supports payouts)
+    shkeeper_api_key = os.getenv("SHKEEPER_API_KEY")
+    shkeeper_api_url = os.getenv("SHKEEPER_API_URL")
+    if shkeeper_api_key and shkeeper_api_url:
+        try:
+            from services.shkeeper import create_invoice as shkeeper_create_invoice
+            result = shkeeper_create_invoice(
+                amount=amount,
+                currency=currency,
+                order_id=order_id,
+                buyer_email=buyer_email,
+            )
+            if result.get("success"):
+                result["provider"] = "shkeeper"
+                return result
+            else:
+                result["provider"] = "shkeeper"
+                return result
+        except Exception as e:
+            print(f"[PaymentProvider] SHKeeper error: {e}, falling back to CryptAPI")
+
+    # Try CryptAPI (simple, no KYC, no node setup needed)
     # Check for currency-specific addresses first, then fallback to default
     cryptapi_wallet = os.getenv("CRYPTAPI_WALLET_ADDRESS")
     cryptapi_ltc_wallet = os.getenv("CRYPTAPI_LTC_WALLET_ADDRESS")
