@@ -58,10 +58,14 @@ export default function EditBotPage() {
   const [updatingProfilePic, setUpdatingProfilePic] = useState(false);
   const [userRole, setUserRole] = useState<string | null>(null);
 
-  // Drag and drop state
+  // Drag and drop state (editor list)
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [dropTargetIndex, setDropTargetIndex] = useState<number | null>(null);
   const dragNodeRef = useRef<HTMLDivElement | null>(null);
+
+  // Drag and drop state (preview)
+  const [previewDragIdx, setPreviewDragIdx] = useState<number | null>(null);
+  const [previewDropIdx, setPreviewDropIdx] = useState<number | null>(null);
 
   const handleDragStart = useCallback((e: React.DragEvent<HTMLDivElement>, index: number) => {
     setDragIndex(index);
@@ -109,6 +113,54 @@ export default function EditBotPage() {
     setDragIndex(null);
     setDropTargetIndex(null);
   }, [dragIndex, formData.custom_buttons]);
+
+  // Preview drag handlers — operate on the flat list of non-fixed custom buttons
+  const FIXED_SYSTEM_ACTIONS = new Set(['shop', 'orders', 'view_wishlist', 'view_cart', 'contact', 'pgp', 'about', 'view_all_reviews']);
+
+  const handlePreviewDragStart = useCallback((e: React.DragEvent<HTMLDivElement>, flatIndex: number) => {
+    setPreviewDragIdx(flatIndex);
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', String(flatIndex));
+    requestAnimationFrame(() => {
+      (e.target as HTMLDivElement).style.opacity = '0.4';
+    });
+  }, []);
+
+  const handlePreviewDragEnd = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+    (e.target as HTMLDivElement).style.opacity = '1';
+    setPreviewDragIdx(null);
+    setPreviewDropIdx(null);
+  }, []);
+
+  const handlePreviewDragOver = useCallback((e: React.DragEvent<HTMLDivElement>, flatIndex: number) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (previewDragIdx !== null && previewDragIdx !== flatIndex) {
+      setPreviewDropIdx(flatIndex);
+    }
+  }, [previewDragIdx]);
+
+  const handlePreviewDrop = useCallback((e: React.DragEvent<HTMLDivElement>, dropFlatIndex: number) => {
+    e.preventDefault();
+    if (previewDragIdx === null || previewDragIdx === dropFlatIndex) {
+      setPreviewDragIdx(null);
+      setPreviewDropIdx(null);
+      return;
+    }
+    // Get the non-fixed custom buttons in order
+    const allSorted = [...formData.custom_buttons].sort((a, b) => a.order - b.order);
+    const customOnly = allSorted.filter(b => !FIXED_SYSTEM_ACTIONS.has(b.action || ''));
+    const fixedOnly = allSorted.filter(b => FIXED_SYSTEM_ACTIONS.has(b.action || ''));
+
+    const [moved] = customOnly.splice(previewDragIdx, 1);
+    customOnly.splice(dropFlatIndex, 0, moved);
+
+    // Rebuild with reassigned order values
+    const reordered = [...customOnly, ...fixedOnly].map((btn, i) => ({ ...btn, order: i }));
+    setFormData(prev => ({ ...prev, custom_buttons: reordered }));
+    setPreviewDragIdx(null);
+    setPreviewDropIdx(null);
+  }, [previewDragIdx, formData.custom_buttons]);
 
   useEffect(() => {
     // Get user role from server
@@ -833,9 +885,11 @@ export default function EditBotPage() {
                               <div className={btnStyle} style={btnColor}>{label}</div>
                             );
 
-                            // Custom buttons only (non-system, enabled, max 3 per row)
+                            const fixedActions = new Set(['shop', 'orders', 'view_wishlist', 'view_cart', 'contact', 'pgp', 'about', 'view_all_reviews']);
+
+                            // Custom buttons = enabled + NOT in fixed system set (includes Promotions, Discounts, etc.)
                             const customBtns = formData.custom_buttons
-                              .filter(b => b.enabled && b.type !== 'system')
+                              .filter(b => b.enabled && !fixedActions.has(b.action || ''))
                               .sort((a, b) => a.order - b.order);
                             const customRows: Array<typeof customBtns> = [];
                             for (let i = 0; i < customBtns.length; i += 3) {
@@ -843,20 +897,37 @@ export default function EditBotPage() {
                             }
 
                             const hasPgp = !!(formData as any).vendor_pgp_key;
+                            let flatIdx = 0;
 
                             return (
                               <>
                                 {/* Fixed: Reviews */}
                                 <div className="flex gap-1"><B label="⭐ Reviews" /></div>
-                                {/* Custom buttons (vendor-defined) */}
+                                {/* Custom buttons (vendor-defined, draggable) */}
                                 {customRows.map((row, ri) => (
                                   <div key={`c${ri}`} className="flex gap-1">
-                                    {row.map((b, bi) => (
-                                      <div key={bi} className={btnStyle} style={btnColor}>
-                                        {b.label || 'Button'}
-                                        {b.type === 'url' && <span className="ml-1" style={{ fontSize: '9px' }}>&#8599;</span>}
-                                      </div>
-                                    ))}
+                                    {row.map((b) => {
+                                      const idx = flatIdx++;
+                                      return (
+                                        <div
+                                          key={idx}
+                                          draggable
+                                          onDragStart={(e) => handlePreviewDragStart(e, idx)}
+                                          onDragEnd={handlePreviewDragEnd}
+                                          onDragOver={(e) => handlePreviewDragOver(e, idx)}
+                                          onDrop={(e) => handlePreviewDrop(e, idx)}
+                                          className={btnStyle}
+                                          style={{
+                                            ...btnColor,
+                                            cursor: 'grab',
+                                            border: previewDropIdx === idx ? '2px solid #fff' : '2px solid transparent',
+                                          }}
+                                        >
+                                          {b.label || 'Button'}
+                                          {b.type === 'url' && <span className="ml-1" style={{ fontSize: '9px' }}>&#8599;</span>}
+                                        </div>
+                                      );
+                                    })}
                                     {row.length === 1 && <><div className="flex-1" /><div className="flex-1" /></>}
                                     {row.length === 2 && <div className="flex-1" />}
                                   </div>

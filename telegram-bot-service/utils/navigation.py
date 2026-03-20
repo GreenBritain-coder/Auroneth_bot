@@ -38,10 +38,11 @@ async def build_menu_rows(bot_config: dict, user_id: str, bot_id: str) -> list:
     ])
 
     # === CUSTOM BUTTONS (vendor-defined, between Reviews and Shop, max 3 per row) ===
+    FIXED_SYSTEM_ACTIONS = {"shop", "orders", "view_wishlist", "view_cart", "contact", "pgp", "about", "view_all_reviews"}
     custom_buttons = bot_config.get("custom_buttons", [])
     custom = [
         b for b in custom_buttons
-        if b.get("type") != "system" and b.get("enabled", True)
+        if b.get("enabled", True) and b.get("action") not in FIXED_SYSTEM_ACTIONS
     ]
     # Legacy main_buttons fallback
     if not custom:
