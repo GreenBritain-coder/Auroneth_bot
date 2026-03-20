@@ -41,6 +41,8 @@ export default function EditBotPage() {
     rating_count: '', // Number of ratings
     vendor_pgp_key: '', // Vendor PGP key
     payment_methods: ['BTC', 'LTC'] as string[], // Supported payment methods (BTC/LTC only)
+    payout_ltc_address: '', // Vendor's LTC payout address
+    payout_btc_address: '', // Vendor's BTC payout address
     shipping_methods: { STD: 0, EXP: 5, NXT: 10 } as Record<string, number>, // Delivery method costs (Standard, Express, Next Day)
   });
   const [updatingProfilePic, setUpdatingProfilePic] = useState(false);
@@ -130,9 +132,11 @@ export default function EditBotPage() {
           rating: botData.rating || '',
           rating_count: botData.rating_count || '',
           vendor_pgp_key: botData.vendor_pgp_key || '',
-          payment_methods: (botData.payment_methods && Array.isArray(botData.payment_methods) && botData.payment_methods.length > 0) 
+          payment_methods: (botData.payment_methods && Array.isArray(botData.payment_methods) && botData.payment_methods.length > 0)
             ? botData.payment_methods.filter((m: string) => m === 'BTC' || m === 'LTC') // Only allow BTC/LTC
             : ['BTC', 'LTC'], // Default to both
+          payout_ltc_address: botData.payout_ltc_address || '',
+          payout_btc_address: botData.payout_btc_address || '',
           shipping_methods: (() => {
             const methods = botData.shipping_methods;
             if (methods && Array.isArray(methods) && methods.length > 0) {
@@ -300,6 +304,8 @@ export default function EditBotPage() {
         rating_count: formData.rating_count || '',
         vendor_pgp_key: formData.vendor_pgp_key || '',
         payment_methods: formData.payment_methods.filter(m => m === 'BTC' || m === 'LTC'), // Only save BTC/LTC
+        payout_ltc_address: formData.payout_ltc_address || '',
+        payout_btc_address: formData.payout_btc_address || '',
         shipping_methods: [
           { code: 'STD', name: 'Standard Delivery', cost: Number(formData.shipping_methods.STD) || 0 },
           { code: 'EXP', name: 'Express Delivery', cost: Number(formData.shipping_methods.EXP) || 0 },
@@ -938,6 +944,35 @@ export default function EditBotPage() {
                 <p className="mt-2 text-sm text-gray-500">
                   Select which payment methods to display on the front page. Only BTC and LTC are supported.
                 </p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Payout Wallet Addresses</label>
+                <p className="text-sm text-gray-500 mb-3">
+                  Set your wallet addresses for automatic payouts. When a customer pays, 90% is automatically sent to your wallet.
+                </p>
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">LTC Payout Address</label>
+                    <input
+                      type="text"
+                      value={formData.payout_ltc_address}
+                      onChange={(e) => setFormData({ ...formData, payout_ltc_address: e.target.value })}
+                      className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm font-mono"
+                      placeholder="ltc1q... or L... or M..."
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">BTC Payout Address</label>
+                    <input
+                      type="text"
+                      value={formData.payout_btc_address}
+                      onChange={(e) => setFormData({ ...formData, payout_btc_address: e.target.value })}
+                      className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm font-mono"
+                      placeholder="bc1q... or 1... or 3..."
+                    />
+                  </div>
+                </div>
               </div>
             </div>
           </div>

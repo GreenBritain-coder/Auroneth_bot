@@ -5,6 +5,7 @@ from database.connection import get_database
 from services.commission import calculate_commission
 from datetime import datetime
 import json
+import os
 
 router = Router()
 
@@ -214,15 +215,155 @@ async def handle_shkeeper_webhook(request: web.Request) -> web.Response:
                         chat_id=order["userId"],
                         text=thank_you_message
                     )
+                    # Try to update the invoice message in Telegram to show "Paid"
+                    try:
+                        invoices_collection = db.invoices
+                        invoice = await invoices_collection.find_one({"invoice_id": external_id})
+                        if not invoice:
+                            invoice = await invoices_collection.find_one({"payment_invoice_id": external_id})
+
+                        if invoice and invoice.get("telegram_message_id") and invoice.get("telegram_chat_id"):
+                            from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+                            display_id = invoice.get("invoice_id", external_id)
+                            paid_text = (
+                                f"✅ *Invoice {display_id}*\n\n"
+                                f"*Status: Paid*\n"
+                                f"💰 Amount: {invoice.get('payment_amount', '')} {invoice.get('payment_currency', '')}\n\n"
+                                f"Thank you for your payment!"
+                            )
+                            paid_keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                                [InlineKeyboardButton(text="⬅️ Back to Orders", callback_data=f"back_pay:{display_id}")]
+                            ])
+                            await bot.edit_message_text(
+                                text=paid_text,
+                                chat_id=invoice["telegram_chat_id"],
+                                message_id=invoice["telegram_message_id"],
+                                parse_mode="Markdown",
+                                reply_markup=paid_keyboard
+                            )
+                            print(f"[SHKeeper Webhook] Invoice message updated to Paid in Telegram")
+                    except Exception as e:
+                        print(f"[SHKeeper Webhook] Could not update invoice message: {e}")
+
             except Exception as e:
                 print(f"Error sending confirmation message: {e}")
-        
+
+            # Auto-payout: send vendor their share (order amount minus platform commission)
+            try:
+                await _process_auto_payout(db, order, external_id, crypto, balance_crypto)
+            except Exception as e:
+                print(f"[SHKeeper Webhook] Auto-payout error for order {external_id}: {e}")
+                import traceback
+                traceback.print_exc()
+
         # SHKeeper expects 202 Accepted for successful webhook processing
         return web.Response(text="Accepted", status=202)
-    
+
     except Exception as e:
         print(f"SHKeeper webhook error: {e}")
         return web.Response(text=f"Error: {str(e)}", status=500)
+
+
+PLATFORM_COMMISSION_RATE = float(os.getenv("PLATFORM_COMMISSION_RATE", "0.10"))  # 10% default
+
+
+async def _process_auto_payout(db, order: dict, order_id: str, crypto: str, balance_crypto: str):
+    """
+    Automatically pay out the vendor after a confirmed payment.
+    Takes platform commission (default 10%) and sends the rest to vendor's wallet.
+    """
+    from services.shkeeper import create_payout
+
+    bots_collection = db.bots
+    bot_config = await bots_collection.find_one({"_id": order.get("botId")})
+
+    if not bot_config:
+        print(f"[AutoPayout] No bot config found for botId={order.get('botId')}, skipping payout")
+        return
+
+    # Get vendor's payout address for this currency
+    crypto_upper = crypto.upper() if crypto else ""
+    payout_address = None
+
+    if crypto_upper == "LTC":
+        payout_address = bot_config.get("payout_ltc_address")
+    elif crypto_upper == "BTC":
+        payout_address = bot_config.get("payout_btc_address")
+
+    if not payout_address:
+        print(f"[AutoPayout] No payout address for {crypto_upper} in bot config '{bot_config.get('name')}', skipping")
+        return
+
+    # Calculate payout amount
+    try:
+        total_crypto = float(balance_crypto)
+    except (ValueError, TypeError):
+        print(f"[AutoPayout] Invalid balance_crypto: {balance_crypto}, skipping")
+        return
+
+    if total_crypto <= 0:
+        print(f"[AutoPayout] Zero or negative amount, skipping")
+        return
+
+    commission_amount = total_crypto * PLATFORM_COMMISSION_RATE
+    payout_amount = total_crypto - commission_amount
+
+    # Round to 8 decimal places
+    payout_amount = round(payout_amount, 8)
+    commission_amount = round(commission_amount, 8)
+
+    if payout_amount <= 0:
+        print(f"[AutoPayout] Payout amount too small after commission: {payout_amount}")
+        return
+
+    print(f"[AutoPayout] Order {order_id}: {total_crypto} {crypto_upper}")
+    print(f"[AutoPayout] Commission ({PLATFORM_COMMISSION_RATE*100}%): {commission_amount} {crypto_upper}")
+    print(f"[AutoPayout] Vendor payout: {payout_amount} {crypto_upper} -> {payout_address}")
+
+    # Send payout via SHKeeper
+    result = create_payout(
+        address=payout_address,
+        amount=payout_amount,
+        currency=crypto_upper,
+    )
+
+    if result.get("success"):
+        print(f"[AutoPayout] ✅ Payout sent: {payout_amount} {crypto_upper} to {payout_address}, txid={result.get('txid')}")
+
+        # Record payout in database
+        payouts_collection = db.commission_payouts
+        await payouts_collection.insert_one({
+            "orderId": order_id,
+            "botId": order.get("botId"),
+            "vendorAddress": payout_address,
+            "currency": crypto_upper,
+            "totalAmount": total_crypto,
+            "commissionAmount": commission_amount,
+            "commissionRate": PLATFORM_COMMISSION_RATE,
+            "payoutAmount": payout_amount,
+            "txid": result.get("txid"),
+            "status": "sent",
+            "createdAt": datetime.utcnow(),
+        })
+    else:
+        print(f"[AutoPayout] ❌ Payout failed: {result.get('error')}")
+
+        # Record failed payout for retry/review
+        payouts_collection = db.commission_payouts
+        await payouts_collection.insert_one({
+            "orderId": order_id,
+            "botId": order.get("botId"),
+            "vendorAddress": payout_address,
+            "currency": crypto_upper,
+            "totalAmount": total_crypto,
+            "commissionAmount": commission_amount,
+            "commissionRate": PLATFORM_COMMISSION_RATE,
+            "payoutAmount": payout_amount,
+            "txid": None,
+            "status": "failed",
+            "error": result.get("error"),
+            "createdAt": datetime.utcnow(),
+        })
 
 
 async def handle_cryptapi_webhook(request: web.Request) -> web.Response:
