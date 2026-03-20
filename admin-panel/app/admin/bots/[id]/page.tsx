@@ -47,7 +47,9 @@ export default function EditBotPage() {
     custom_buttons: [] as Array<{
       label: string;
       message: string;
-      type: 'text' | 'url';
+      type: 'text' | 'url' | 'system';
+      action?: string;
+      undeletable?: boolean;
       url?: string;
       order: number;
       enabled: boolean;
@@ -229,26 +231,67 @@ export default function EditBotPage() {
             return autoButtons.length > 0 ? JSON.stringify(autoButtons, null, 2) : '';
           })(),
           custom_buttons: (() => {
-            // Load custom_buttons if they exist, otherwise migrate from main_buttons
-            if (botData.custom_buttons && Array.isArray(botData.custom_buttons) && botData.custom_buttons.length > 0) {
-              return botData.custom_buttons.sort((a: any, b: any) => (a.order || 0) - (b.order || 0));
+            // Check if custom_buttons already has system buttons
+            const existing = botData.custom_buttons && Array.isArray(botData.custom_buttons) ? botData.custom_buttons : [];
+            const hasSystemButtons = existing.some((b: any) => b.type === 'system');
+
+            if (hasSystemButtons) {
+              return existing.sort((a: any, b: any) => (a.order || 0) - (b.order || 0));
             }
-            // Migrate from main_buttons for backward compatibility
+
+            // Migration: seed system buttons + keep existing custom buttons
             const mainButtons = botData.main_buttons || [];
             const mainButtonMessages = botData.messages || {};
-            return mainButtons
-              .filter((btn: string) => btn && btn.trim())
-              .map((btn: string, idx: number) => {
-                const dbKey = btn.replace(/[^\w\s]/g, '').toLowerCase().trim().replace(/\s+/g, '_');
-                return {
-                  label: btn.trim(),
-                  message: mainButtonMessages[dbKey] || '',
-                  type: 'text' as const,
-                  url: '',
-                  order: idx,
-                  enabled: true,
-                };
-              });
+            const hasPromo = mainButtons.some((b: string) => b && b.replace(/[^\w\s]/g, '').toLowerCase().trim() === 'promotions');
+            const hasDiscounts = mainButtons.some((b: string) => b && b.replace(/[^\w\s]/g, '').toLowerCase().trim() === 'discounts');
+            const hasPgp = !!(botData.vendor_pgp_key);
+
+            const systemButtons: any[] = [];
+            let order = 0;
+            systemButtons.push({ label: '\u2B50 Reviews', type: 'system', action: 'view_all_reviews', undeletable: false, enabled: true, order: order++, message: '' });
+            if (hasPromo) {
+              systemButtons.push({ label: '\uD83D\uDC8E Promotions', type: 'system', action: 'promotions', undeletable: false, enabled: true, order: order++, message: mainButtonMessages['promotions'] || '' });
+            }
+            if (hasDiscounts) {
+              systemButtons.push({ label: '\u2B50 Discounts', type: 'system', action: 'discounts', undeletable: false, enabled: true, order: order++, message: mainButtonMessages['discounts'] || '' });
+            }
+            systemButtons.push({ label: '\uD83D\uDECD\uFE0F Shop', type: 'system', action: 'shop', undeletable: true, enabled: true, order: order++, message: '' });
+            systemButtons.push({ label: '\uD83D\uDCE6 Orders', type: 'system', action: 'orders', undeletable: true, enabled: true, order: order++, message: '' });
+            systemButtons.push({ label: '\u2764\uFE0F Wishlist', type: 'system', action: 'view_wishlist', undeletable: false, enabled: true, order: order++, message: '' });
+            systemButtons.push({ label: '\uD83D\uDED2 Cart', type: 'system', action: 'view_cart', undeletable: false, enabled: true, order: order++, message: '' });
+            systemButtons.push({ label: '\uD83D\uDCAC Contact', type: 'system', action: 'contact', undeletable: true, enabled: true, order: order++, message: '' });
+            if (hasPgp) {
+              systemButtons.push({ label: '\uD83D\uDD10 PGP', type: 'system', action: 'pgp', undeletable: false, enabled: true, order: order++, message: '' });
+            }
+            systemButtons.push({ label: '\u2139\uFE0F About', type: 'system', action: 'about', undeletable: false, enabled: true, order: order++, message: '' });
+
+            // Add existing custom (non-system) buttons after system ones
+            const customOnly = existing.filter((b: any) => b.type !== 'system');
+            // Also migrate from main_buttons if no custom_buttons existed
+            let migratedCustom: any[] = [];
+            if (customOnly.length === 0 && mainButtons.length > 0) {
+              const systemActions = new Set(systemButtons.map((s: any) => s.action));
+              const systemLabelKeys = new Set(systemButtons.map((s: any) => s.label.replace(/[^\w\s]/g, '').toLowerCase().trim().replace(/\s+/g, '_')));
+              migratedCustom = mainButtons
+                .filter((btn: string) => btn && btn.trim())
+                .map((btn: string) => {
+                  const dbKey = btn.replace(/[^\w\s]/g, '').toLowerCase().trim().replace(/\s+/g, '_');
+                  return { label: btn.trim(), message: mainButtonMessages[dbKey] || '', type: 'text' as const, url: '', order: 0, enabled: true };
+                })
+                .filter((btn: any) => {
+                  const key = btn.label.replace(/[^\w\s]/g, '').toLowerCase().trim().replace(/\s+/g, '_');
+                  return !systemActions.has(key) && !systemLabelKeys.has(key);
+                });
+            } else {
+              migratedCustom = customOnly;
+            }
+
+            const allButtons = [...systemButtons];
+            migratedCustom.forEach((btn: any) => {
+              allButtons.push({ ...btn, order: order++ });
+            });
+
+            return allButtons;
           })(),
         });
       } else {
@@ -317,7 +360,8 @@ export default function EditBotPage() {
         .filter(btn => btn.enabled)
         .sort((a, b) => a.order - b.order);
 
-      const main_buttons = enabledButtons.map(btn => btn.label);
+      // main_buttons only includes non-system buttons for backward compat
+      const main_buttons = enabledButtons.filter(btn => btn.type !== 'system').map(btn => btn.label);
 
       // Auto-generate menu_inline_buttons from custom_buttons (2 per row)
       const autoMenuInlineButtons: any[][] = [];
@@ -538,7 +582,7 @@ export default function EditBotPage() {
             <div className="flex items-center justify-between mb-4">
               <div>
                 <h3 className="text-lg font-medium text-gray-900">Menu Buttons</h3>
-                <p className="text-sm text-gray-500">Configure custom buttons that appear in the bot menu. Drag to reorder. Hardcoded rows (Reviews, Orders/Wishlist/Cart, Contact/About) are always shown.</p>
+                <p className="text-sm text-gray-500">Configure all buttons that appear in the bot menu. Drag to reorder. System buttons can be renamed and moved; locked ones cannot be disabled or deleted.</p>
               </div>
               <button
                 type="button"
@@ -575,6 +619,8 @@ export default function EditBotPage() {
                   {formData.custom_buttons
                     .sort((a, b) => a.order - b.order)
                     .map((btn, index) => {
+                      const isSystem = btn.type === 'system';
+                      const isUndeletable = !!(btn as any).undeletable;
                       const buttonKey = btn.label.replace(/[^\w\s]/g, '').toLowerCase().trim().replace(/\s+/g, '_');
                       const isSpecial = ['shop', 'orders'].includes(buttonKey);
 
@@ -599,6 +645,9 @@ export default function EditBotPage() {
                                   <path d="M7 2a2 2 0 10.001 4.001A2 2 0 007 2zm0 6a2 2 0 10.001 4.001A2 2 0 007 8zm0 6a2 2 0 10.001 4.001A2 2 0 007 14zm6-8a2 2 0 10-.001-4.001A2 2 0 0013 6zm0 2a2 2 0 10.001 4.001A2 2 0 0013 8zm0 6a2 2 0 10.001 4.001A2 2 0 0013 14z" />
                                 </svg>
                                 <span className="text-xs text-gray-400 font-mono">{index + 1}</span>
+                                {isSystem && (
+                                  <span className="text-[9px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full font-semibold mt-0.5">System</span>
+                                )}
                               </div>
 
                               {/* Button fields */}
@@ -619,22 +668,29 @@ export default function EditBotPage() {
                                       }}
                                     />
                                   </div>
-                                  <div className="w-28">
-                                    <label className="block text-xs font-medium text-gray-600 mb-1">Type</label>
-                                    <select
-                                      className="block w-full border border-gray-300 rounded-md px-2 py-1.5 text-sm"
-                                      value={btn.type}
-                                      onChange={(e) => {
-                                        const buttons = [...formData.custom_buttons];
-                                        const sorted = buttons.sort((a, b) => a.order - b.order);
-                                        sorted[index] = { ...sorted[index], type: e.target.value as 'text' | 'url' };
-                                        setFormData({ ...formData, custom_buttons: sorted });
-                                      }}
-                                    >
-                                      <option value="text">Text</option>
-                                      <option value="url">URL</option>
-                                    </select>
-                                  </div>
+                                  {!isSystem && (
+                                    <div className="w-28">
+                                      <label className="block text-xs font-medium text-gray-600 mb-1">Type</label>
+                                      <select
+                                        className="block w-full border border-gray-300 rounded-md px-2 py-1.5 text-sm"
+                                        value={btn.type}
+                                        onChange={(e) => {
+                                          const buttons = [...formData.custom_buttons];
+                                          const sorted = buttons.sort((a, b) => a.order - b.order);
+                                          sorted[index] = { ...sorted[index], type: e.target.value as 'text' | 'url' };
+                                          setFormData({ ...formData, custom_buttons: sorted });
+                                        }}
+                                      >
+                                        <option value="text">Text</option>
+                                        <option value="url">URL</option>
+                                      </select>
+                                    </div>
+                                  )}
+                                  {isSystem && (
+                                    <div className="w-28 flex items-end pb-0.5">
+                                      <span className="text-xs text-gray-400 italic">Action: {(btn as any).action}</span>
+                                    </div>
+                                  )}
                                 </div>
 
                                 {btn.type === 'url' && (
@@ -655,57 +711,76 @@ export default function EditBotPage() {
                                   </div>
                                 )}
 
-                                <div>
-                                  <label className="block text-xs font-medium text-gray-600 mb-1">
-                                    Message {btn.type === 'url' ? '(shown alongside link)' : '(shown when clicked)'}
-                                    {isSpecial && (
-                                      <span className="ml-1 text-gray-400">(Special button - message shows before default action)</span>
-                                    )}
-                                  </label>
-                                  <textarea
-                                    className="block w-full border border-gray-300 rounded-md px-3 py-1.5 text-sm"
-                                    rows={2}
-                                    placeholder={`Message displayed when "${btn.label || 'this button'}" is clicked`}
-                                    value={btn.message}
-                                    onChange={(e) => {
-                                      const buttons = [...formData.custom_buttons];
-                                      const sorted = buttons.sort((a, b) => a.order - b.order);
-                                      sorted[index] = { ...sorted[index], message: e.target.value };
-                                      setFormData({ ...formData, custom_buttons: sorted });
-                                    }}
-                                  />
-                                </div>
+                                {!isSystem && (
+                                  <div>
+                                    <label className="block text-xs font-medium text-gray-600 mb-1">
+                                      Message {btn.type === 'url' ? '(shown alongside link)' : '(shown when clicked)'}
+                                      {isSpecial && (
+                                        <span className="ml-1 text-gray-400">(Special button - message shows before default action)</span>
+                                      )}
+                                    </label>
+                                    <textarea
+                                      className="block w-full border border-gray-300 rounded-md px-3 py-1.5 text-sm"
+                                      rows={2}
+                                      placeholder={`Message displayed when "${btn.label || 'this button'}" is clicked`}
+                                      value={btn.message}
+                                      onChange={(e) => {
+                                        const buttons = [...formData.custom_buttons];
+                                        const sorted = buttons.sort((a, b) => a.order - b.order);
+                                        sorted[index] = { ...sorted[index], message: e.target.value };
+                                        setFormData({ ...formData, custom_buttons: sorted });
+                                      }}
+                                    />
+                                  </div>
+                                )}
                               </div>
 
                               {/* Enable toggle + delete */}
                               <div className="flex flex-col items-center gap-2 pt-1">
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    const buttons = [...formData.custom_buttons].sort((a, b) => a.order - b.order);
-                                    buttons[index] = { ...buttons[index], enabled: !buttons[index].enabled };
-                                    setFormData({ ...formData, custom_buttons: buttons });
-                                  }}
-                                  className={`relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out ${btn.enabled ? 'bg-indigo-600' : 'bg-gray-300'}`}
-                                  title={btn.enabled ? 'Enabled - click to disable' : 'Disabled - click to enable'}
-                                >
-                                  <span className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${btn.enabled ? 'translate-x-4' : 'translate-x-0'}`} />
-                                </button>
-                                <span className="text-xs text-gray-500">{btn.enabled ? 'On' : 'Off'}</span>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    const buttons = [...formData.custom_buttons]
-                                      .sort((a, b) => a.order - b.order)
-                                      .filter((_, i) => i !== index)
-                                      .map((b, i) => ({ ...b, order: i }));
-                                    setFormData({ ...formData, custom_buttons: buttons });
-                                  }}
-                                  className="text-red-400 hover:text-red-600 mt-1"
-                                  title="Delete button"
-                                >
-                                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" /></svg>
-                                </button>
+                                {isUndeletable ? (
+                                  <>
+                                    <div className="relative inline-flex h-5 w-9 flex-shrink-0 rounded-full bg-indigo-600 opacity-60 cursor-not-allowed border-2 border-transparent" title="Always enabled (locked)">
+                                      <span className="pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 translate-x-4" />
+                                    </div>
+                                    <span className="text-xs text-gray-400">Locked</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        const buttons = [...formData.custom_buttons].sort((a, b) => a.order - b.order);
+                                        buttons[index] = { ...buttons[index], enabled: !buttons[index].enabled };
+                                        setFormData({ ...formData, custom_buttons: buttons });
+                                      }}
+                                      className={`relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out ${btn.enabled ? 'bg-indigo-600' : 'bg-gray-300'}`}
+                                      title={btn.enabled ? 'Enabled - click to disable' : 'Disabled - click to enable'}
+                                    >
+                                      <span className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${btn.enabled ? 'translate-x-4' : 'translate-x-0'}`} />
+                                    </button>
+                                    <span className="text-xs text-gray-500">{btn.enabled ? 'On' : 'Off'}</span>
+                                  </>
+                                )}
+                                {isUndeletable ? (
+                                  <div className="text-gray-300 mt-1" title="Cannot be deleted">
+                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" /></svg>
+                                  </div>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const buttons = [...formData.custom_buttons]
+                                        .sort((a, b) => a.order - b.order)
+                                        .filter((_, i) => i !== index)
+                                        .map((b, i) => ({ ...b, order: i }));
+                                      setFormData({ ...formData, custom_buttons: buttons });
+                                    }}
+                                    className="text-red-400 hover:text-red-600 mt-1"
+                                    title="Delete button"
+                                  >
+                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" /></svg>
+                                  </button>
+                                )}
                               </div>
                             </div>
                           </div>
@@ -757,72 +832,41 @@ export default function EditBotPage() {
                           </div>
                         </div>
 
-                        {/* Inline keyboard buttons - matches actual bot layout */}
+                        {/* Inline keyboard buttons - rendered from custom_buttons */}
                         <div className="mt-1 space-y-1">
-                          {/* Row 1: Reviews (always shown, full width) */}
-                          <div className="flex gap-1">
-                            <div className="flex-1 text-center py-1.5 px-2 rounded text-[12px] font-medium" style={{ backgroundColor: '#4a90d9', color: '#ffffff' }}>
-                              ⭐ Reviews
-                            </div>
-                          </div>
-
-                          {/* Custom buttons from builder */}
                           {(() => {
                             const enabledBtns = formData.custom_buttons
                               .filter(b => b.enabled)
-                              .sort((a, b) => a.order - b.order)
-                              .filter(b => {
-                                const clean = b.label.replace(/[^\w\s]/g, '').toLowerCase().trim();
-                                return clean !== 'orders';
-                              });
+                              .sort((a, b) => a.order - b.order);
                             const rows: Array<typeof enabledBtns> = [];
                             for (let i = 0; i < enabledBtns.length; i += 2) {
                               rows.push(enabledBtns.slice(i, i + 2));
                             }
                             return rows.map((row, ri) => (
                               <div key={ri} className="flex gap-1">
-                                {row.map((b, bi) => (
-                                  <div
-                                    key={bi}
-                                    className="flex-1 text-center py-1.5 px-2 rounded text-[12px] font-medium truncate"
-                                    style={{ backgroundColor: '#4a90d9', color: '#ffffff' }}
-                                  >
-                                    {b.label || 'Button'}
-                                    {b.type === 'url' && (
-                                      <span className="ml-1 inline-block align-middle" style={{ fontSize: '9px' }}>&#8599;</span>
-                                    )}
-                                  </div>
-                                ))}
+                                {row.map((b, bi) => {
+                                  let displayLabel = b.label || 'Button';
+                                  // Show static preview labels for dynamic buttons
+                                  const action = (b as any).action;
+                                  if (action === 'orders') displayLabel = b.label || '\uD83D\uDCE6 Orders';
+                                  if (action === 'view_cart') displayLabel = b.label || '\uD83D\uDED2 Cart';
+                                  return (
+                                    <div
+                                      key={bi}
+                                      className="flex-1 text-center py-1.5 px-2 rounded text-[12px] font-medium truncate"
+                                      style={{ backgroundColor: '#4a90d9', color: '#ffffff' }}
+                                    >
+                                      {displayLabel}
+                                      {b.type === 'url' && (
+                                        <span className="ml-1 inline-block align-middle" style={{ fontSize: '9px' }}>&#8599;</span>
+                                      )}
+                                    </div>
+                                  );
+                                })}
                                 {row.length === 1 && <div className="flex-1" />}
                               </div>
                             ));
                           })()}
-
-                          {/* Hardcoded rows matching actual bot */}
-                          <div className="flex gap-1">
-                            <div className="flex-1 text-center py-1.5 px-2 rounded text-[12px] font-medium" style={{ backgroundColor: '#4a90d9', color: '#ffffff' }}>
-                              📦 Orders
-                            </div>
-                            <div className="flex-1 text-center py-1.5 px-2 rounded text-[12px] font-medium" style={{ backgroundColor: '#4a90d9', color: '#ffffff' }}>
-                              ❤️ Wishlist
-                            </div>
-                            <div className="flex-1 text-center py-1.5 px-2 rounded text-[12px] font-medium" style={{ backgroundColor: '#4a90d9', color: '#ffffff' }}>
-                              🛒 Cart
-                            </div>
-                          </div>
-                          <div className="flex gap-1">
-                            <div className="flex-1 text-center py-1.5 px-2 rounded text-[12px] font-medium" style={{ backgroundColor: '#4a90d9', color: '#ffffff' }}>
-                              💬 Contact
-                            </div>
-                            {formData.vendor_pgp_key && (
-                              <div className="flex-1 text-center py-1.5 px-2 rounded text-[12px] font-medium" style={{ backgroundColor: '#4a90d9', color: '#ffffff' }}>
-                                🔐 PGP
-                              </div>
-                            )}
-                            <div className="flex-1 text-center py-1.5 px-2 rounded text-[12px] font-medium" style={{ backgroundColor: '#4a90d9', color: '#ffffff' }}>
-                              ℹ️ About
-                            </div>
-                          </div>
                         </div>
                       </div>
                     </div>

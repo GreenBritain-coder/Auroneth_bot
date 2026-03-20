@@ -381,43 +381,68 @@ async def show_welcome_message(message: Message, bot_config: dict, secret_phrase
     await message.answer(welcome_message, reply_markup=inline_keyboard)
 
 
-@router.callback_query(F.data == "menu")
-async def handle_menu_callback(callback: CallbackQuery, state: FSMContext):
-    """Handle menu button click - edit message to show menu directly"""
-    await safe_answer_callback(callback)
-    await state.clear()  # Clear any FSM state (e.g. contact waiting_for_message)
-    
-    bot_config = await get_bot_config()
-    if not bot_config:
-        try:
-            await callback.message.edit_text("❌ Bot configuration not found. Please contact administrator.")
-        except:
-            try:
-                await callback.message.delete()
-            except Exception:
-                pass
-            await callback.message.answer("❌ Bot configuration not found. Please contact administrator.")
-        return
-
+async def _build_menu_buttons(bot_config: dict, user_id: str, bot_id: str):
+    """Build inline keyboard buttons from custom_buttons (unified system).
+    Returns a list of button rows ready for InlineKeyboardMarkup.
+    """
     import re
-
-    # Build menu text
-    menu_text = "📋 *Main Menu*"
-
-    # Create inline keyboard - Reviews first, then custom buttons, Orders/Wishlist/Cart and Contact/About at bottom
-    inline_keyboard_buttons = []
-    user_id = str(callback.from_user.id) if callback.from_user else ""
-    bot_id = str(bot_config["_id"])
     from utils.bottom_menu import get_menu_stats
+
     order_count, cart_display = await get_menu_stats(user_id, bot_id)
-    # First row: Reviews only
+    vendor_pgp_key = bot_config.get("vendor_pgp_key", "")
+
+    custom_buttons = bot_config.get("custom_buttons", [])
+    has_system = any(b.get("type") == "system" for b in custom_buttons) if custom_buttons else False
+
+    if has_system and custom_buttons:
+        # Unified system: entire menu from custom_buttons
+        enabled_buttons = [b for b in custom_buttons if b.get("enabled", True)]
+        # Filter out PGP if vendor has no pgp key
+        enabled_buttons = [
+            b for b in enabled_buttons
+            if not (b.get("type") == "system" and b.get("action") == "pgp" and not vendor_pgp_key)
+        ]
+        enabled_buttons.sort(key=lambda b: b.get("order", 0))
+
+        inline_keyboard_buttons = []
+        for i in range(0, len(enabled_buttons), 2):
+            button_row = []
+            for j in range(2):
+                if i + j >= len(enabled_buttons):
+                    break
+                btn = enabled_buttons[i + j]
+                label = btn.get("label", "")
+                btn_type = btn.get("type", "text")
+                action = btn.get("action", "")
+
+                if btn_type == "system":
+                    # Inject dynamic data into label
+                    if action == "orders":
+                        label = f"{label} ({order_count})"
+                    elif action == "view_cart":
+                        label = f"🛒 {cart_display}"
+                    button_row.append(InlineKeyboardButton(text=label, callback_data=action))
+                elif btn_type == "url" and btn.get("url"):
+                    button_row.append(InlineKeyboardButton(text=label, url=btn["url"]))
+                else:
+                    cb_data = re.sub(r'\s+', '_', re.sub(r'[^\w\s]', '', label).lower().strip())
+                    button_row.append(InlineKeyboardButton(text=label, callback_data=cb_data))
+
+            if button_row:
+                inline_keyboard_buttons.append(button_row)
+
+        return inline_keyboard_buttons
+
+    # FALLBACK: legacy layout for bots without unified custom_buttons
+    inline_keyboard_buttons = []
+
+    # First row: Reviews
     inline_keyboard_buttons.append([
         InlineKeyboardButton(text="⭐ Reviews", callback_data="view_all_reviews")
     ])
-    # Build custom buttons from custom_buttons field, falling back to main_buttons
-    custom_buttons = bot_config.get("custom_buttons", [])
+
+    # Custom / main_buttons
     if custom_buttons and isinstance(custom_buttons, list) and len(custom_buttons) > 0:
-        # Use custom_buttons - filter enabled, sort by order, skip "orders"
         enabled_buttons = [
             b for b in custom_buttons
             if b.get("enabled", True) and re.sub(r'[^\w\s]', '', str(b.get("label", "")).lower()).strip() != "orders"
@@ -442,7 +467,6 @@ async def handle_menu_callback(callback: CallbackQuery, state: FSMContext):
                     button_row.append(InlineKeyboardButton(text=label2, callback_data=action2))
             inline_keyboard_buttons.append(button_row)
     else:
-        # Fallback to main_buttons for backward compatibility
         main_buttons = bot_config.get("main_buttons", [])
         main_buttons = [btn for btn in main_buttons if btn and btn.strip()] if isinstance(main_buttons, list) else []
         main_buttons_filtered = [b for b in main_buttons if re.sub(r'[^\w\s]', '', str(b).lower()).strip() != "orders"]
@@ -463,13 +487,13 @@ async def handle_menu_callback(callback: CallbackQuery, state: FSMContext):
                         callback_data=callback_data_2
                     ))
                 inline_keyboard_buttons.append(button_row)
-    # Bottom rows: Orders | Wishlist | Cart, then Contact | About
+
+    # Bottom rows: Orders | Wishlist | Cart, then Contact | PGP? | About
     inline_keyboard_buttons.append([
         InlineKeyboardButton(text=f"📦 Orders ({order_count})", callback_data="orders"),
         InlineKeyboardButton(text="❤️ Wishlist", callback_data="view_wishlist"),
         InlineKeyboardButton(text=f"🛒 {cart_display}", callback_data="view_cart"),
     ])
-    vendor_pgp_key = bot_config.get("vendor_pgp_key", "")
     if vendor_pgp_key:
         inline_keyboard_buttons.append([
             InlineKeyboardButton(text="💬 Contact", callback_data="contact"),
@@ -481,6 +505,34 @@ async def handle_menu_callback(callback: CallbackQuery, state: FSMContext):
             InlineKeyboardButton(text="💬 Contact", callback_data="contact"),
             InlineKeyboardButton(text="ℹ️ About", callback_data="about"),
         ])
+
+    return inline_keyboard_buttons
+
+
+@router.callback_query(F.data == "menu")
+async def handle_menu_callback(callback: CallbackQuery, state: FSMContext):
+    """Handle menu button click - edit message to show menu directly"""
+    await safe_answer_callback(callback)
+    await state.clear()  # Clear any FSM state (e.g. contact waiting_for_message)
+
+    bot_config = await get_bot_config()
+    if not bot_config:
+        try:
+            await callback.message.edit_text("❌ Bot configuration not found. Please contact administrator.")
+        except:
+            try:
+                await callback.message.delete()
+            except Exception:
+                pass
+            await callback.message.answer("❌ Bot configuration not found. Please contact administrator.")
+        return
+
+    # Build menu text
+    menu_text = "📋 *Main Menu*"
+
+    user_id = str(callback.from_user.id) if callback.from_user else ""
+    bot_id = str(bot_config["_id"])
+    inline_keyboard_buttons = await _build_menu_buttons(bot_config, user_id, bot_id)
 
     # Edit the message to show menu directly
     if inline_keyboard_buttons:
@@ -586,93 +638,17 @@ async def cmd_about(message: Message):
 async def cmd_menu(message: Message):
     """Show menu with all active buttons as inline buttons and available commands"""
     bot_config = await get_bot_config()
-    
+
     if not bot_config:
         await message.answer("❌ Bot configuration not found. Please contact administrator.", reply_markup=ReplyKeyboardRemove())
         return
-    
-    import re
 
     # Build menu text
     menu_text = "📋 *Main Menu*"
 
-    # Create inline keyboard - Reviews first, then custom buttons, Orders/Wishlist/Cart and Contact/About at bottom
-    inline_keyboard_buttons = []
     user_id = str(message.from_user.id) if message.from_user else ""
     bot_id = str(bot_config["_id"])
-    from utils.bottom_menu import get_menu_stats
-    order_count, cart_display = await get_menu_stats(user_id, bot_id)
-    # First row: Reviews only
-    inline_keyboard_buttons.append([
-        InlineKeyboardButton(text="⭐ Reviews", callback_data="view_all_reviews")
-    ])
-    # Build custom buttons from custom_buttons field, falling back to main_buttons
-    custom_buttons = bot_config.get("custom_buttons", [])
-    if custom_buttons and isinstance(custom_buttons, list) and len(custom_buttons) > 0:
-        # Use custom_buttons - filter enabled, sort by order, skip "orders"
-        enabled_buttons = [
-            b for b in custom_buttons
-            if b.get("enabled", True) and re.sub(r'[^\w\s]', '', str(b.get("label", "")).lower()).strip() != "orders"
-        ]
-        enabled_buttons.sort(key=lambda b: b.get("order", 0))
-        for i in range(0, len(enabled_buttons), 2):
-            button_row = []
-            btn1 = enabled_buttons[i]
-            label1 = btn1.get("label", "")
-            if btn1.get("type") == "url" and btn1.get("url"):
-                button_row.append(InlineKeyboardButton(text=label1, url=btn1["url"]))
-            else:
-                action1 = re.sub(r'\s+', '_', re.sub(r'[^\w\s]', '', label1).lower().strip())
-                button_row.append(InlineKeyboardButton(text=label1, callback_data=action1))
-            if i + 1 < len(enabled_buttons):
-                btn2 = enabled_buttons[i + 1]
-                label2 = btn2.get("label", "")
-                if btn2.get("type") == "url" and btn2.get("url"):
-                    button_row.append(InlineKeyboardButton(text=label2, url=btn2["url"]))
-                else:
-                    action2 = re.sub(r'\s+', '_', re.sub(r'[^\w\s]', '', label2).lower().strip())
-                    button_row.append(InlineKeyboardButton(text=label2, callback_data=action2))
-            inline_keyboard_buttons.append(button_row)
-    else:
-        # Fallback to main_buttons for backward compatibility
-        main_buttons = bot_config.get("main_buttons", [])
-        main_buttons = [btn for btn in main_buttons if btn and btn.strip()] if isinstance(main_buttons, list) else []
-        main_buttons_filtered = [b for b in main_buttons if re.sub(r'[^\w\s]', '', str(b).lower()).strip() != "orders"]
-        if main_buttons_filtered and len(main_buttons_filtered) > 0:
-            for i in range(0, len(main_buttons_filtered), 2):
-                button_row = []
-                button_text_clean = re.sub(r'[^\w\s]', '', main_buttons_filtered[i])
-                callback_data_1 = re.sub(r'\s+', '_', button_text_clean.lower().strip())
-                button_row.append(InlineKeyboardButton(
-                    text=main_buttons_filtered[i],
-                    callback_data=callback_data_1
-                ))
-                if i + 1 < len(main_buttons_filtered):
-                    button_text_clean_2 = re.sub(r'[^\w\s]', '', main_buttons_filtered[i + 1])
-                    callback_data_2 = re.sub(r'\s+', '_', button_text_clean_2.lower().strip())
-                    button_row.append(InlineKeyboardButton(
-                        text=main_buttons_filtered[i + 1],
-                        callback_data=callback_data_2
-                    ))
-                inline_keyboard_buttons.append(button_row)
-    # Bottom rows: Orders | Wishlist | Cart, then Contact | About
-    inline_keyboard_buttons.append([
-        InlineKeyboardButton(text=f"📦 Orders ({order_count})", callback_data="orders"),
-        InlineKeyboardButton(text="❤️ Wishlist", callback_data="view_wishlist"),
-        InlineKeyboardButton(text=f"🛒 {cart_display}", callback_data="view_cart"),
-    ])
-    vendor_pgp_key = bot_config.get("vendor_pgp_key", "")
-    if vendor_pgp_key:
-        inline_keyboard_buttons.append([
-            InlineKeyboardButton(text="💬 Contact", callback_data="contact"),
-            InlineKeyboardButton(text="🔐 PGP", callback_data="pgp"),
-            InlineKeyboardButton(text="ℹ️ About", callback_data="about"),
-        ])
-    else:
-        inline_keyboard_buttons.append([
-            InlineKeyboardButton(text="💬 Contact", callback_data="contact"),
-            InlineKeyboardButton(text="ℹ️ About", callback_data="about"),
-        ])
+    inline_keyboard_buttons = await _build_menu_buttons(bot_config, user_id, bot_id)
 
     # Show inline menu
     if inline_keyboard_buttons:
