@@ -49,7 +49,7 @@ const VENDOR_ACTIONS: Record<string, Array<{
     { status: 'refunded', label: 'Refund', color: 'bg-orange-600 hover:bg-orange-700 text-white', requiresInput: 'refund_txid' },
   ],
   confirmed: [
-    { status: 'shipped', label: 'Mark Shipped', color: 'bg-indigo-600 hover:bg-indigo-700 text-white' },
+    { status: 'shipped', label: 'Mark Shipped', color: 'bg-indigo-600 hover:bg-indigo-700 text-white', requiresInput: 'tracking_info' },
     { status: 'cancelled', label: 'Cancel', color: 'bg-red-600 hover:bg-red-700 text-white', requiresInput: 'cancellation_reason' },
   ],
   shipped: [
@@ -181,6 +181,7 @@ export default function OrdersPage() {
   const inputLabels: Record<string, { title: string; placeholder: string }> = {
     cancellation_reason: { title: 'Cancellation Reason', placeholder: 'Reason for cancellation' },
     refund_txid: { title: 'Refund TX Hash', placeholder: 'Blockchain transaction hash' },
+    tracking_info: { title: 'Tracking Reference (internal)', placeholder: 'e.g. RM-AB123456789GB' },
   };
 
   return (

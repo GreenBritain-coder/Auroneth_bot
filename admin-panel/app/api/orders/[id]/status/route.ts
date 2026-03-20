@@ -35,7 +35,7 @@ const INVOICE_STATUS_MAP: Record<string, string> = {
 const BUYER_MESSAGES: Record<string, string> = {
   paid: 'Your payment for Order #{order_id} has been confirmed! The vendor will review your order shortly.',
   confirmed: 'Great news! Order #{order_id} has been confirmed by the vendor and is being prepared.',
-  shipped: 'Order #{order_id} has been shipped!{tracking}',
+  shipped: 'Order #{order_id} has been shipped!',
   delivered: 'Order #{order_id} has been marked as delivered. Please confirm receipt or open a dispute if there\'s an issue.',
   completed: 'Order #{order_id} is now complete. Thank you for your purchase!',
   disputed: 'Dispute opened for Order #{order_id}. The vendor has been notified.',
@@ -217,7 +217,6 @@ async function notifyBuyer(
 
   const message = template
     .replace('{order_id}', orderId)
-    .replace('{tracking}', trackingInfo ? `\nTracking: ${trackingInfo}` : '')
     .replace('{reason}', cancellationReason ? `\nReason: ${cancellationReason}` : '')
     .replace('{txid}', refundTxid ? `\nTransaction: ${refundTxid}` : '');
 
