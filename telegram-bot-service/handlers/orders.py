@@ -1,9 +1,12 @@
 """
-Order management handlers - view user orders
+Order management handlers - view user orders with status-grouped view,
+order detail with timeline, buyer actions (confirm receipt, open dispute).
 """
 from aiogram import Router, F
 from aiogram.filters import Command
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
 from typing import Union
 from database.connection import get_database
 from utils.bot_config import get_bot_config
@@ -11,6 +14,47 @@ from utils.callback_utils import safe_answer_callback
 from datetime import datetime, timedelta
 
 router = Router()
+
+
+# FSM states for dispute flow
+class DisputeStates(StatesGroup):
+    waiting_for_reason = State()
+
+
+# Status display config
+STATUS_EMOJI = {
+    "pending": "\u23f3",
+    "paid": "\U0001f4b0",
+    "confirmed": "\u2705",
+    "shipped": "\U0001f69a",
+    "delivered": "\U0001f4e6",
+    "completed": "\u2705",
+    "disputed": "\u26a0\ufe0f",
+    "expired": "\U0001f6ab",
+    "cancelled": "\U0001f6ab",
+    "refunded": "\U0001f4b8",
+    "failed": "\U0001f6ab",
+}
+
+STATUS_LABEL = {
+    "pending": "Pending Payment",
+    "paid": "Paid",
+    "confirmed": "Confirmed",
+    "shipped": "Shipped",
+    "delivered": "Delivered",
+    "completed": "Completed",
+    "disputed": "Disputed",
+    "expired": "Expired",
+    "cancelled": "Cancelled",
+    "refunded": "Refunded",
+    "failed": "Failed",
+}
+
+# Group statuses for the summary view
+ACTIVE_STATUSES = {"paid", "confirmed", "shipped", "delivered", "disputed"}
+PENDING_STATUSES = {"pending"}
+COMPLETED_STATUSES = {"completed"}
+CLOSED_STATUSES = {"expired", "cancelled", "refunded", "failed"}
 
 
 @router.message(Command("orders"))
@@ -26,44 +70,39 @@ async def handle_orders_button(message: Message):
 
 
 async def show_user_orders(message_or_callback: Union[Message, CallbackQuery]):
-    """Display user's orders - accepts either Message or CallbackQuery"""
+    """Display user's orders - status-grouped view with inline buttons."""
     bot_config = await get_bot_config()
     if not bot_config:
         if isinstance(message_or_callback, CallbackQuery):
-            await message_or_callback.message.answer("❌ Bot configuration not found.")
+            await message_or_callback.message.answer("\u274c Bot configuration not found.")
         else:
-            await message_or_callback.answer("❌ Bot configuration not found.")
+            await message_or_callback.answer("\u274c Bot configuration not found.")
         return
-    
+
     bot_id = str(bot_config["_id"])
-    
-    # Extract user and message from either Message or CallbackQuery
+
     if isinstance(message_or_callback, CallbackQuery):
         user = message_or_callback.from_user
         message = message_or_callback.message
-        bot = message_or_callback.bot
     else:
         user = message_or_callback.from_user
         message = message_or_callback
-        bot = message.bot
-    
-    # Get user ID
+
     if not user:
         if isinstance(message_or_callback, CallbackQuery):
-            await message_or_callback.message.answer("❌ Could not identify user.")
+            await message_or_callback.message.answer("\u274c Could not identify user.")
         else:
-            await message_or_callback.answer("❌ Could not identify user.")
+            await message_or_callback.answer("\u274c Could not identify user.")
         return
-    
+
     user_id = str(user.id)
-    
-    # Helper: when from callback, edit message in place (stay in same menu); otherwise send new message
+
+    # Helper: edit or send depending on context
     async def send_message(text, **kwargs):
         if isinstance(message_or_callback, CallbackQuery):
             try:
                 await message.edit_text(text, **kwargs)
             except Exception:
-                # edit_text fails on photo messages - delete and send new
                 try:
                     await message.delete()
                 except Exception:
@@ -71,442 +110,419 @@ async def show_user_orders(message_or_callback: Union[Message, CallbackQuery]):
                 await message.answer(text, **kwargs)
         else:
             await message.answer(text, **kwargs)
-    
-    # Also log the full user object for debugging
-    print(f"[Orders Debug] User info - ID: {user_id}, Username: {user.username}, Full name: {user.full_name}")
-    
+
     db = get_database()
     orders_collection = db.orders
     products_collection = db.products
-    
-    # Debug: Log what we're searching for
-    print(f"[Orders Debug] Searching for orders - userId: {user_id}, botId: {bot_id}")
-    
+
     # Get user's orders - handle both string and ObjectId botId formats
     from bson import ObjectId
-    
-    # Try multiple approaches to find orders
     orders = []
-    
-    # First try: exact string match
+
+    # Try exact string match first
     try:
         orders = await orders_collection.find({
             "userId": user_id,
-            "botId": bot_id
-        }).sort("timestamp", -1).to_list(length=20)
-        print(f"[Orders Debug] First try (string match): Found {len(orders)} orders")
-    except Exception as e:
-        print(f"[Orders Debug] First try error: {e}")
-    
-    # Second try: if botId is 24 chars, try as ObjectId
+            "botId": bot_id,
+        }).sort("timestamp", -1).to_list(length=50)
+    except Exception:
+        pass
+
+    # Try ObjectId match if needed
     if not orders and len(bot_id) == 24:
         try:
             orders = await orders_collection.find({
                 "userId": user_id,
-                "botId": ObjectId(bot_id)
-            }).sort("timestamp", -1).to_list(length=20)
-            print(f"[Orders Debug] Second try (ObjectId match): Found {len(orders)} orders")
-        except Exception as e:
-            print(f"[Orders Debug] Second try error: {e}")
-    
-    # Third try: fetch all orders for user and filter by botId string comparison
+                "botId": ObjectId(bot_id),
+            }).sort("timestamp", -1).to_list(length=50)
+        except Exception:
+            pass
+
+    # Fallback: fetch all and filter
     if not orders:
         try:
             all_user_orders = await orders_collection.find({
-                "userId": user_id
+                "userId": user_id,
             }).sort("timestamp", -1).to_list(length=100)
-            print(f"[Orders Debug] Third try: Found {len(all_user_orders)} total orders for user")
-            # Filter by botId (handle both string and ObjectId)
-            orders = [
-                o for o in all_user_orders 
-                if str(o.get("botId", "")) == bot_id
-            ][:20]
-            print(f"[Orders Debug] After filtering by botId: Found {len(orders)} orders")
-            # Debug: Show what botIds we found
-            if all_user_orders:
-                for o in all_user_orders[:3]:
-                    print(f"[Orders Debug] Order {o.get('_id')} has botId: {o.get('botId')} (type: {type(o.get('botId'))})")
-        except Exception as e:
-            print(f"[Orders Debug] Error fetching orders: {e}")
-    
+            orders = [o for o in all_user_orders if str(o.get("botId", "")) == bot_id][:50]
+        except Exception:
+            pass
+
     if not orders:
-        print(f"[Orders Debug] No orders found. userId: {user_id}, botId: {bot_id}")
-        # Check if there are ANY orders for this user (for debugging)
-        try:
-            any_orders = await orders_collection.find({"userId": user_id}).to_list(length=5)
-            if any_orders:
-                print(f"[Orders Debug] Found {len(any_orders)} orders for user {user_id}, but botId doesn't match")
-                for o in any_orders:
-                    print(f"  Order {o.get('_id')}: botId={o.get('botId')} (expected {bot_id})")
-            else:
-                print(f"[Orders Debug] No orders found for user {user_id} at all")
-        except Exception as e:
-            print(f"[Orders Debug] Error checking for orders: {e}")
         menu_keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="📋 Back to Menu", callback_data="menu")]
+            [InlineKeyboardButton(text="\U0001f4cb Back to Menu", callback_data="menu")]
         ])
-        await send_message("📦 You don't have any orders yet.", reply_markup=menu_keyboard)
+        await send_message("\U0001f4e6 You don't have any orders yet.", reply_markup=menu_keyboard)
         return
-    
-    # Helper function to get display order ID
-    async def get_display_order_id(order):
-        """Get the order ID to display - prefer numeric invoice_id, fallback to _id"""
-        order_id = str(order.get('_id', ''))
-        
-        # Check if it's already numeric (new format)
-        if order_id.isdigit():
-            return order_id
-        
-        # If it's a UUID, try to find related invoice
-        if '-' in order_id and len(order_id) == 36:  # UUID format
-            invoices_collection = db.invoices
-            # Try to find invoice by order_id (for old orders that might have invoiceId)
-            invoice = await invoices_collection.find_one({"invoice_id": order_id})
-            if invoice:
-                return invoice.get("invoice_id", order_id)
-            
-            # Try to find by order's invoiceId field
-            invoice_id_field = order.get("invoiceId")
-            if invoice_id_field:
-                invoice = await invoices_collection.find_one({"payment_invoice_id": invoice_id_field})
-                if invoice:
-                    return invoice.get("invoice_id", order_id)
-        
-        # Fallback: return the order_id as-is (will be UUID for old orders)
-        return order_id
-    
-    # Build message with all orders
-    orders_text = "📦 *Your Orders*\n\n"
-    
-    invoices_collection = db.invoices
-    
-    # Group orders by status for counts (need to check expiry for pending)
-    paid_orders = [o for o in orders if o.get("paymentStatus") == "paid"]
-    pending_orders = [o for o in orders if o.get("paymentStatus") == "pending"]
-    failed_orders = [o for o in orders if o.get("paymentStatus") in ["failed", "cancelled"]]
-    # Count expired among pending (payment_deadline passed)
-    expired_count = 0
-    for o in pending_orders:
-        inv = await invoices_collection.find_one({"invoice_id": str(o.get("_id", ""))})
-        if not inv:
-            inv = await invoices_collection.find_one({"_id": str(o.get("_id", ""))})
-        if inv and inv.get("payment_deadline"):
-            try:
-                pd = inv["payment_deadline"]
-                if isinstance(pd, str):
-                    from dateutil import parser
-                    pd = parser.parse(pd)
-                if pd and datetime.utcnow() > pd:
-                    expired_count += 1
-            except Exception:
-                pass
-    
-    orders_text += f"⏳ *Pending Payments:* {len(pending_orders)}\n"
-    orders_text += f"✅ *Completed:* {len(paid_orders)}\n"
-    if expired_count > 0 or failed_orders:
-        orders_text += f"🚫 *Expired/Cancelled:* {expired_count + len(failed_orders)}\n"
-    orders_text += f"*Total Orders:* {len(orders)}\n\n"
-    
-    # Create inline buttons for each order
+
+    # Group orders by status category
+    active = []
+    pending = []
+    completed = []
+    closed = []
+
+    for o in orders:
+        status = o.get("paymentStatus", "pending")
+        if status in ACTIVE_STATUSES:
+            active.append(o)
+        elif status in PENDING_STATUSES:
+            pending.append(o)
+        elif status in COMPLETED_STATUSES:
+            completed.append(o)
+        else:
+            closed.append(o)
+
+    # Build summary text
+    text = "\U0001f4e6 *My Orders*\n\n"
+
     keyboard_buttons = []
-    
-    for order in orders[:10]:  # Show first 10 orders
-        product = await get_product_info(products_collection, order.get("productId"))
-        product_name = product.get("name", "Unknown Product") if product else "Unknown Product"
-        currency = product.get("currency", "") if product else ""
-        
-        order_date = order.get("timestamp", datetime.utcnow())
-        if isinstance(order_date, datetime):
-            date_str = order_date.strftime("%Y-%m-%d %H:%M")
-        else:
-            date_str = str(order_date)
-        
-        display_order_id = await get_display_order_id(order)
-        payment_status = order.get("paymentStatus", "pending")
-        
-        # Check if order has notes (via invoice)
-        has_notes = False
-        is_expired = False
-        order_id_str = str(order.get('_id', ''))
-        invoice = await invoices_collection.find_one({"invoice_id": order_id_str})
-        if not invoice:
-            # Try finding invoice by _id
-            invoice = await invoices_collection.find_one({"_id": order_id_str})
-        if invoice and invoice.get("notes"):
-            has_notes = True
-        # Check if pending order is expired (payment_deadline passed)
-        if invoice and payment_status == "pending":
-            payment_deadline = invoice.get("payment_deadline")
-            if payment_deadline:
-                try:
-                    if isinstance(payment_deadline, str):
-                        try:
-                            from dateutil import parser
-                            payment_deadline = parser.parse(payment_deadline)
-                        except Exception:
-                            try:
-                                payment_deadline = datetime.strptime(payment_deadline, "%Y-%m-%d %H:%M:%S")
-                            except Exception:
-                                payment_deadline = None
-                    if payment_deadline and datetime.utcnow() > payment_deadline:
-                        is_expired = True
-                except Exception:
-                    pass
-        
-        # Determine emoji based on status
-        if payment_status == "paid":
-            emoji = "✅"  # Tick for completed
-        elif payment_status in ["failed", "cancelled"]:
-            emoji = "🚫"  # No entry for cancelled/failed
-        elif is_expired:
-            emoji = "🚫"  # No entry for expired
-        elif payment_status == "pending":
-            emoji = "⏰"  # Clock for pending payment
-        else:
-            emoji = "✏️"  # Pencil for editable orders
-        
-        # Add order to text
-        orders_text += f"{emoji} Order Number {display_order_id}\n"
-        orders_text += f"• {product_name}\n"
-        orders_text += f"  Amount: {order.get('amount', 0)} {currency}\n"
-        orders_text += f"  Date: {date_str}\n"
-        if has_notes:
-            orders_text += f"  📝 Has notes\n"
-        orders_text += "\n"
-        
-        # Create inline button for this order
-        # Use the order_id directly (not display_order_id) to ensure we can find the invoice
-        button_text = f"{emoji} Order {display_order_id}"
-        # Use the actual order _id for callback data
-        actual_order_id = str(order.get('_id', ''))
-        keyboard_buttons.append([
-            InlineKeyboardButton(text=button_text, callback_data=f"order:{actual_order_id}")
-        ])
-    
-    if len(orders) > 10:
-        orders_text += f"*...and {len(orders) - 10} more orders*"
-    
-    # Add back to menu button at bottom
+
+    # Active Orders section
+    if active:
+        text += f"*Active Orders ({len(active)}):*\n"
+        for o in active[:5]:
+            display_id, product_name, date_str = await _order_summary_line(o, products_collection)
+            emoji = STATUS_EMOJI.get(o.get("paymentStatus", ""), "\u2753")
+            label = STATUS_LABEL.get(o.get("paymentStatus", ""), o.get("paymentStatus", ""))
+            text += f"  {emoji} `{display_id}` - {product_name} - {label}\n"
+            keyboard_buttons.append([
+                InlineKeyboardButton(
+                    text=f"{emoji} [{label}] Order {display_id}",
+                    callback_data=f"order_detail:{str(o['_id'])}",
+                )
+            ])
+        if len(active) > 5:
+            text += f"  _...and {len(active) - 5} more_\n"
+        text += "\n"
+
+    # Pending Payment section
+    if pending:
+        text += f"*Pending Payment ({len(pending)}):*\n"
+        for o in pending[:3]:
+            display_id, product_name, date_str = await _order_summary_line(o, products_collection)
+            text += f"  \u23f3 `{display_id}` - {product_name} - {date_str}\n"
+            keyboard_buttons.append([
+                InlineKeyboardButton(
+                    text=f"\u23f3 [Pending] Order {display_id}",
+                    callback_data=f"order:{str(o['_id'])}",
+                )
+            ])
+        if len(pending) > 3:
+            text += f"  _...and {len(pending) - 3} more_\n"
+        text += "\n"
+
+    # Completed section
+    if completed:
+        text += f"*Completed ({len(completed)}):*\n"
+        for o in completed[:3]:
+            display_id, product_name, date_str = await _order_summary_line(o, products_collection)
+            text += f"  \u2705 `{display_id}` - {product_name} - {date_str}\n"
+            keyboard_buttons.append([
+                InlineKeyboardButton(
+                    text=f"\u2705 [Completed] Order {display_id}",
+                    callback_data=f"order_detail:{str(o['_id'])}",
+                )
+            ])
+        if len(completed) > 3:
+            text += f"  _...and {len(completed) - 3} more_\n"
+        text += "\n"
+
+    # Closed section (expired, cancelled, refunded)
+    if closed:
+        text += f"*Expired/Cancelled ({len(closed)}):*\n"
+        for o in closed[:3]:
+            display_id, product_name, date_str = await _order_summary_line(o, products_collection)
+            emoji = STATUS_EMOJI.get(o.get("paymentStatus", ""), "\U0001f6ab")
+            label = STATUS_LABEL.get(o.get("paymentStatus", ""), o.get("paymentStatus", ""))
+            text += f"  {emoji} `{display_id}` - {product_name} - {label}\n"
+            keyboard_buttons.append([
+                InlineKeyboardButton(
+                    text=f"{emoji} [{label}] Order {display_id}",
+                    callback_data=f"order_detail:{str(o['_id'])}",
+                )
+            ])
+        if len(closed) > 3:
+            text += f"  _...and {len(closed) - 3} more_\n"
+        text += "\n"
+
+    text += f"*Total Orders:* {len(orders)}"
+
+    # Back to menu button
     keyboard_buttons.append([
-        InlineKeyboardButton(text="⬅️ Back to Menu", callback_data="menu")
+        InlineKeyboardButton(text="\u2b05\ufe0f Back to Menu", callback_data="menu")
     ])
-    
+
     keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
-    
-    await send_message(orders_text, parse_mode="Markdown", reply_markup=keyboard)
+    await send_message(text, parse_mode="Markdown", reply_markup=keyboard)
+
+
+async def _order_summary_line(order, products_collection):
+    """Return (display_id, product_name, date_str) for an order."""
+    order_id = str(order.get("_id", ""))
+    display_id = order_id[:8] if len(order_id) > 8 else order_id
+
+    product = await get_product_info(products_collection, order.get("productId"))
+    product_name = product.get("name", "Unknown") if product else "Unknown"
+    # Truncate long product names
+    if len(product_name) > 20:
+        product_name = product_name[:18] + ".."
+
+    order_date = order.get("timestamp", datetime.utcnow())
+    if isinstance(order_date, datetime):
+        delta = datetime.utcnow() - order_date
+        if delta.days == 0:
+            hours = delta.seconds // 3600
+            if hours == 0:
+                date_str = f"{delta.seconds // 60}m ago"
+            else:
+                date_str = f"{hours}h ago"
+        elif delta.days < 7:
+            date_str = f"{delta.days}d ago"
+        else:
+            date_str = order_date.strftime("%b %d")
+    else:
+        date_str = str(order_date)[:10]
+
+    return display_id, product_name, date_str
 
 
 async def get_product_info(products_collection, product_id):
     """Get product information by ID"""
     if not product_id:
         return None
-    
+
     from bson import ObjectId
     product = None
-    
-    # Try as ObjectId
+
     try:
         if len(str(product_id)) == 24:
             product = await products_collection.find_one({"_id": ObjectId(product_id)})
     except:
         pass
-    
-    # Try as string
+
     if not product:
         product = await products_collection.find_one({"_id": product_id})
-    
-    # Try by string representation
+
     if not product:
         all_products = await products_collection.find({}).to_list(length=100)
         for p in all_products:
-            if str(p.get('_id')) == str(product_id):
+            if str(p.get("_id")) == str(product_id):
                 product = p
                 break
-    
+
     return product
 
 
+# ---------- Order Detail with Timeline ----------
+
+@router.callback_query(F.data.startswith("order_detail:"))
+async def handle_order_detail_view(callback: CallbackQuery):
+    """Show detailed order view with timeline and context-sensitive action buttons."""
+    await safe_answer_callback(callback)
+
+    order_id = callback.data.split(":")[1]
+    db = get_database()
+    orders_collection = db.orders
+    products_collection = db.products
+
+    order = await orders_collection.find_one({"_id": order_id})
+    if not order:
+        await callback.message.answer("\u274c Order not found.")
+        return
+
+    # Verify this order belongs to the current user
+    user_id = str(callback.from_user.id)
+    if str(order.get("userId")) != user_id:
+        await callback.message.answer("\u274c This order does not belong to you.")
+        return
+
+    display_id = order_id[:8] if len(order_id) > 8 else order_id
+    status = order.get("paymentStatus", "pending")
+    emoji = STATUS_EMOJI.get(status, "\u2753")
+    label = STATUS_LABEL.get(status, status)
+
+    # Build header
+    text = f"\U0001f4e6 *Order #{display_id}*\n\n"
+    text += f"*Status:* {emoji} {label}\n"
+
+    # Show relevant timestamp
+    status_ts = order.get(f"{status}_at")
+    if status_ts and isinstance(status_ts, datetime):
+        text += f"*{label} on:* {status_ts.strftime('%Y-%m-%d %H:%M')} UTC\n"
+
+    # Tracking info
+    if order.get("tracking_info"):
+        text += f"*Tracking:* {order['tracking_info']}\n"
+
+    # Dispute/cancellation reason
+    if status == "disputed" and order.get("dispute_reason"):
+        text += f"*Dispute reason:* {order['dispute_reason']}\n"
+    if status == "cancelled" and order.get("cancellation_reason"):
+        text += f"*Cancellation reason:* {order['cancellation_reason']}\n"
+    if status == "refunded" and order.get("refund_txid"):
+        text += f"*Refund TX:* `{order['refund_txid']}`\n"
+
+    text += "\n"
+
+    # Timeline
+    status_history = order.get("status_history", [])
+    if status_history:
+        text += "*Timeline:*\n"
+        for entry in status_history:
+            ts = entry.get("changed_at")
+            if isinstance(ts, datetime):
+                ts_str = ts.strftime("%Y-%m-%d %H:%M")
+            else:
+                ts_str = str(ts)[:16]
+            from_s = entry.get("from_status", "?")
+            to_s = entry.get("to_status", "?")
+            to_emoji = STATUS_EMOJI.get(to_s, "")
+            text += f"  {to_emoji} {ts_str} - {STATUS_LABEL.get(to_s, to_s)}\n"
+            if entry.get("note"):
+                text += f"      _{entry['note']}_\n"
+    else:
+        # Fallback timeline from timestamps
+        text += "*Timeline:*\n"
+        created = order.get("timestamp")
+        if created and isinstance(created, datetime):
+            text += f"  \U0001f4dd {created.strftime('%Y-%m-%d %H:%M')} - Order placed\n"
+        if order.get("paid_at") and isinstance(order["paid_at"], datetime):
+            text += f"  \U0001f4b0 {order['paid_at'].strftime('%Y-%m-%d %H:%M')} - Payment confirmed\n"
+
+    text += "\n"
+
+    # Products / items
+    items = order.get("items", [])
+    if items:
+        text += "*Products:*\n"
+        for item in items[:5]:
+            product = await get_product_info(products_collection, item.get("product_id"))
+            pname = product.get("name", "Unknown") if product else "Unknown"
+            qty = item.get("quantity", 1)
+            price = item.get("price", 0)
+            text += f"  \u2022 {pname} x{qty} - {price}\n"
+    else:
+        product = await get_product_info(products_collection, order.get("productId"))
+        if product:
+            text += f"*Product:* {product.get('name', 'Unknown')} x{order.get('quantity', 1)}\n"
+
+    # Delivery & totals
+    if order.get("delivery_method"):
+        shipping = order.get("shipping_cost", 0)
+        text += f"*Delivery:* {order['delivery_method']}"
+        if shipping:
+            text += f" (+{shipping})"
+        text += "\n"
+
+    text += f"*Total:* {order.get('amount', 0)}\n"
+
+    # Build action buttons based on status
+    buttons = []
+
+    if status == "delivered":
+        buttons.append([
+            InlineKeyboardButton(text="\u2705 Confirm Receipt", callback_data=f"confirm_receipt:{order_id}"),
+        ])
+        # Check dispute window
+        bot_config = await get_bot_config()
+        dispute_days = (bot_config or {}).get("dispute_window_days", 3)
+        delivered_at = order.get("delivered_at")
+        if delivered_at and isinstance(delivered_at, datetime):
+            if (datetime.utcnow() - delivered_at).days < dispute_days:
+                buttons.append([
+                    InlineKeyboardButton(text="\u26a0\ufe0f Open Dispute", callback_data=f"dispute:{order_id}"),
+                ])
+
+    if status == "shipped":
+        buttons.append([
+            InlineKeyboardButton(text="\u2705 Confirm Receipt", callback_data=f"confirm_receipt:{order_id}"),
+        ])
+
+    # Back to orders button always
+    buttons.append([
+        InlineKeyboardButton(text="\u2b05\ufe0f Back to Orders", callback_data="show_orders"),
+    ])
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
+
+    try:
+        await callback.message.edit_text(text, parse_mode="Markdown", reply_markup=keyboard)
+    except Exception:
+        try:
+            await callback.message.delete()
+        except Exception:
+            pass
+        await callback.message.answer(text, parse_mode="Markdown", reply_markup=keyboard)
+
+
+# ---------- Legacy order: callback (for pending orders that show payment invoice) ----------
+
 @router.callback_query(F.data.startswith("order:"))
 async def handle_order_detail(callback: CallbackQuery):
-    """Handle order detail button click - show payment invoice"""
+    """Handle order detail button click - show payment invoice for pending orders,
+    or redirect to detail view for others."""
     await safe_answer_callback(callback)
-    
+
     order_id = callback.data.split(":")[1]
-    print(f"[Order Detail] Looking up order_id: {order_id}")
-    
-    # Normalize order_id (remove "inv-" prefix if present)
-    original_order_id = order_id
+
+    # Normalize order_id
     if order_id.lower().startswith("inv-"):
-        order_id = order_id[4:]  # Remove "inv-" prefix
-        print(f"[Order Detail] Removed 'inv-' prefix, new order_id: {order_id}")
-    
-    # Keep original case for numeric IDs, but try both cases for alphanumeric
-    order_id_variants = [order_id, order_id.upper(), order_id.lower(), original_order_id]
-    print(f"[Order Detail] Trying variants: {order_id_variants}")
-    
+        order_id = order_id[4:]
+
+    order_id_variants = [order_id, order_id.upper(), order_id.lower()]
+
     db = get_database()
     invoices_collection = db.invoices
     orders_collection = db.orders
-    
+
+    # Find the order first to check status
+    order = None
+    for variant in order_id_variants:
+        order = await orders_collection.find_one({"_id": variant})
+        if order:
+            break
+
+    # If order is in an active/completed/closed state (not pending), show detail view
+    if order and order.get("paymentStatus") not in ("pending", None):
+        # Redirect to the detail view
+        callback.data = f"order_detail:{str(order['_id'])}"
+        await handle_order_detail_view(callback)
+        return
+
+    # For pending orders, show the payment invoice (existing behavior)
     invoice = None
     found_variant = None
-    
-    # Try all order_id variants to find the invoice
+
     for variant in order_id_variants:
-        # Try to find invoice by invoice_id
         invoice = await invoices_collection.find_one({"invoice_id": variant})
         if invoice:
             found_variant = variant
-            print(f"[Order Detail] Found invoice by invoice_id: {variant}")
             break
-        
-        # Try to find invoice by _id (some old invoices might use _id instead of invoice_id)
         invoice = await invoices_collection.find_one({"_id": variant})
         if invoice:
             found_variant = variant
-            print(f"[Order Detail] Found invoice by _id: {variant}")
             break
-        
-        # Try to find order by _id, then find associated invoice
-        order = await orders_collection.find_one({"_id": variant})
-        if order:
-            print(f"[Order Detail] Found order with _id: {variant}")
-            print(f"[Order Detail] Order details: botId={order.get('botId')}, userId={order.get('userId')}, paymentStatus={order.get('paymentStatus')}")
-            
-            # CRITICAL: The order _id should match the invoice invoice_id
-            # Try direct lookup first (most common case)
-            invoice = await invoices_collection.find_one({"invoice_id": str(order.get("_id"))})
-            if invoice:
-                found_variant = str(order.get("_id"))
-                print(f"[Order Detail] ✓ Found invoice by invoice_id matching order _id")
-                break
-            
-            # Try with numeric conversion if order_id is numeric
-            if variant.isdigit():
-                invoice = await invoices_collection.find_one({"invoice_id": int(variant)})
-                if invoice:
-                    found_variant = variant
-                    print(f"[Order Detail] ✓ Found invoice by numeric invoice_id")
-                    break
-            
-            # Try to find invoice by _id matching order _id (for old format where invoice _id = order _id)
-            invoice = await invoices_collection.find_one({"_id": str(order.get("_id"))})
-            if invoice:
-                found_variant = invoice.get("invoice_id", variant)
-                print(f"[Order Detail] ✓ Found invoice by _id matching order _id")
-                break
-            
-            # Try to find invoice by user_id and bot_id to find related invoices (for orphaned orders)
-            user_id = str(order.get("userId"))
-            bot_id = str(order.get("botId"))
-            print(f"[Order Detail] Searching for related invoices: user_id={user_id}, bot_id={bot_id}")
-            
-            # Get all invoices for this user/bot around the same time
-            order_timestamp = order.get("timestamp")
-            related_invoices = []
-            if order_timestamp:
-                # Search invoices within 1 hour of order timestamp
-                from datetime import timedelta
-                if isinstance(order_timestamp, str):
-                    from dateutil import parser
-                    try:
-                        order_timestamp = parser.parse(order_timestamp)
-                    except:
-                        order_timestamp = None
-                
-                if order_timestamp:
-                    time_window_start = order_timestamp - timedelta(hours=1)
-                    time_window_end = order_timestamp + timedelta(hours=1)
-                    related_invoices = await invoices_collection.find({
-                        "user_id": user_id,
-                        "bot_id": bot_id,
-                        "created_at": {"$gte": time_window_start, "$lte": time_window_end}
-                    }).sort("created_at", -1).limit(5).to_list(length=5)
-            
-            # If no time-based search, just get recent invoices
-            if not related_invoices:
-                related_invoices = await invoices_collection.find({
-                    "user_id": user_id,
-                    "bot_id": bot_id
-                }).sort("created_at", -1).limit(10).to_list(length=10)
-            
-            print(f"[Order Detail] Found {len(related_invoices)} related invoices to check")
-            
-            # Check if any invoice matches this order by product or items
-            if related_invoices:
-                order_product_id = str(order.get("productId", ""))
-                order_amount = order.get("amount", 0)
-                
-                for inv in related_invoices:
-                    inv_items = inv.get("items", [])
-                    inv_total = inv.get("total", 0)
-                    
-                    # Check if items match
-                    for inv_item in inv_items:
-                        if str(inv_item.get("product_id", "")) == order_product_id:
-                            # Product matches - this is likely the correct invoice
-                            invoice = inv
-                            found_variant = inv.get("invoice_id", str(inv.get("_id")))
-                            print(f"[Order Detail] ✓ Found matching invoice by product match: {found_variant}")
-                            break
-                    
-                    if invoice:
-                        break
-                    
-                    # Also check by total amount (if product_id doesn't match)
-                    if abs(float(inv_total) - float(order_amount)) < 0.01:  # Within 0.01 tolerance
-                        invoice = inv
-                        found_variant = inv.get("invoice_id", str(inv.get("_id")))
-                        print(f"[Order Detail] ✓ Found matching invoice by amount match: {found_variant}")
-                        break
-            
-            # Try to find invoice by payment_invoice_id from order
-            if not invoice:
-                invoice_id_field = order.get("invoiceId")
-                if invoice_id_field:
-                    invoice = await invoices_collection.find_one({"payment_invoice_id": invoice_id_field})
-                    if invoice:
-                        found_variant = invoice_id_field
-                        print(f"[Order Detail] ✓ Found invoice by payment_invoice_id: {invoice_id_field}")
-                        break
-            
-            # Last resort: try invoice_id one more time
-            if not invoice:
-                invoice = await invoices_collection.find_one({"invoice_id": variant})
-                if invoice:
-                    found_variant = variant
-                    print(f"[Order Detail] ✓ Found invoice by invoice_id (final try): {variant}")
-                    break
-    
+
+    if not invoice and order:
+        invoice = await invoices_collection.find_one({"invoice_id": str(order.get("_id"))})
+        if invoice:
+            found_variant = str(order.get("_id"))
+
     if invoice:
         invoice_id = invoice.get("invoice_id", found_variant or order_id)
-        print(f"[Order Detail] Using invoice_id: {invoice_id}, status: {invoice.get('status')}, has payment_address: {bool(invoice.get('payment_address'))}")
-        
-        # If we found the invoice but it's not directly linked to the order, link them now
-        # This fixes the mismatch where order._id != invoice.invoice_id
-        order_found = await orders_collection.find_one({"_id": order_id})
-        if order_found and order_found.get("_id") != invoice_id:
-            # Update the invoice to link back to this order (if invoice_id field exists on order)
-            # Or we could update the order, but for now just ensure the relationship is clear
-            print(f"[Order Detail] Linking order {order_found.get('_id')} to invoice {invoice_id}")
-            # Note: We're not changing the invoice_id, but ensuring the order can be found via the invoice
-        
-        # Check if invoice has payment details or is already paid
-        # Show payment invoice if: has payment address AND (status is Pending Payment, Paid, or Completed)
         invoice_status = invoice.get("status", "").lower()
         has_payment_address = bool(invoice.get("payment_address"))
         is_paid = invoice_status in ["paid", "completed"]
-        
-        # Also check order payment status
-        order_found = await orders_collection.find_one({"_id": invoice_id})
-        if order_found and order_found.get("paymentStatus", "").lower() == "paid":
+
+        # Check order payment status too
+        if order and order.get("paymentStatus", "").lower() == "paid":
             is_paid = True
-        
-        # Check if order is expired or cancelled (not paid + deadline passed or failed status)
+
+        # Check if expired
         is_expired_or_cancelled = False
         if not is_paid:
-            payment_status = order_found.get("paymentStatus", "pending") if order_found else "pending"
-            if payment_status.lower() in ["failed", "cancelled"]:
+            payment_status = order.get("paymentStatus", "pending") if order else "pending"
+            if payment_status.lower() in ["failed", "cancelled", "expired"]:
                 is_expired_or_cancelled = True
             else:
                 payment_deadline = invoice.get("payment_deadline")
@@ -516,46 +532,190 @@ async def handle_order_detail(callback: CallbackQuery):
                             from dateutil import parser
                             payment_deadline = parser.parse(payment_deadline)
                         except Exception:
-                            try:
-                                payment_deadline = datetime.strptime(payment_deadline, "%Y-%m-%d %H:%M:%S")
-                            except Exception:
-                                payment_deadline = None
+                            payment_deadline = None
                     if payment_deadline and datetime.utcnow() > payment_deadline:
                         is_expired_or_cancelled = True
-        
-        # Show cancelled format for expired/cancelled orders
+
         if is_expired_or_cancelled:
             from handlers.shop import show_cancelled_order_invoice
             await show_cancelled_order_invoice(invoice_id, callback)
         elif has_payment_address or is_paid:
-            # Import and call show_payment_invoice from shop handler
             from handlers.shop import show_payment_invoice
             await show_payment_invoice(invoice_id, callback)
         else:
-            # Invoice exists but payment not set up yet - show checkout invoice
             from handlers.shop import show_checkout_invoice
             await show_checkout_invoice(invoice_id, callback)
     else:
-        print(f"[Order Detail] Invoice not found for any variant of order_id: {order_id_variants}")
-        # Check if this might be an old order that was deleted or from a previous test
-        order_exists = await orders_collection.find_one({"_id": {"$in": order_id_variants}})
-        if order_exists:
-            # Order exists but no invoice - might be an old format or deleted invoice
-            error_msg = (
-                f"❌ Invoice not found for order {order_id}.\n\n"
-                f"*Possible reasons:*\n"
-                f"• Invoice was deleted\n"
-                f"• This is an old order from a previous test\n"
-                f"• Invoice ID format changed\n\n"
-                f"*Order Status:* {order_exists.get('paymentStatus', 'unknown')}\n"
-                f"*Order Date:* {order_exists.get('timestamp', 'unknown')}"
-            )
-        else:
-            # Order doesn't exist either - completely invalid ID
-            error_msg = (
-                f"❌ Invoice not found for order {order_id}.\n\n"
-                f"This order ID doesn't exist in the system. "
-                f"It may have been deleted or is from an old test session."
-            )
+        error_msg = f"\u274c Invoice not found for order {order_id}."
         await callback.message.answer(error_msg, parse_mode="Markdown")
 
+
+# ---------- Back to Orders callback ----------
+
+@router.callback_query(F.data == "show_orders")
+async def handle_show_orders(callback: CallbackQuery):
+    """Return to orders list."""
+    await safe_answer_callback(callback)
+    await show_user_orders(callback)
+
+
+# ---------- Confirm Receipt ----------
+
+@router.callback_query(F.data.startswith("confirm_receipt:"))
+async def handle_confirm_receipt(callback: CallbackQuery):
+    """Buyer confirms receipt of a delivered/shipped order."""
+    await safe_answer_callback(callback)
+
+    order_id = callback.data.split(":")[1]
+    user_id = str(callback.from_user.id)
+
+    db = get_database()
+    orders_collection = db.orders
+
+    order = await orders_collection.find_one({"_id": order_id})
+    if not order:
+        await callback.message.answer("\u274c Order not found.")
+        return
+
+    if str(order.get("userId")) != user_id:
+        await callback.message.answer("\u274c This order does not belong to you.")
+        return
+
+    if order.get("paymentStatus") not in ("delivered", "shipped"):
+        await callback.message.answer(
+            f"\u274c Cannot confirm receipt. Order status is '{order.get('paymentStatus')}'."
+        )
+        return
+
+    # If status is shipped, we need to first transition to delivered, then to completed
+    from services.order_state_machine import transition_order
+
+    if order.get("paymentStatus") == "shipped":
+        # Transition shipped -> delivered first
+        result = await transition_order(
+            db, order_id, "delivered", f"buyer:{user_id}",
+            note="Buyer confirmed receipt (shipped -> delivered)",
+            skip_notification=True,
+        )
+        if not result["success"]:
+            await callback.message.answer(f"\u274c Error: {result['error']}")
+            return
+
+    # Transition delivered -> completed
+    result = await transition_order(
+        db, order_id, "completed", f"buyer:{user_id}",
+        note="Buyer confirmed receipt",
+    )
+
+    if result["success"]:
+        text = (
+            f"\u2705 *Order #{order_id[:8] if len(order_id) > 8 else order_id} Completed*\n\n"
+            f"Thank you for confirming receipt! Your order is now complete."
+        )
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="\u2b05\ufe0f Back to Orders", callback_data="show_orders")]
+        ])
+        try:
+            await callback.message.edit_text(text, parse_mode="Markdown", reply_markup=keyboard)
+        except Exception:
+            await callback.message.answer(text, parse_mode="Markdown", reply_markup=keyboard)
+    else:
+        await callback.message.answer(f"\u274c Error: {result['error']}")
+
+
+# ---------- Open Dispute ----------
+
+@router.callback_query(F.data.startswith("dispute:"))
+async def handle_open_dispute(callback: CallbackQuery, state: FSMContext):
+    """Buyer starts dispute flow - asks for reason."""
+    await safe_answer_callback(callback)
+
+    order_id = callback.data.split(":")[1]
+    user_id = str(callback.from_user.id)
+
+    db = get_database()
+    orders_collection = db.orders
+
+    order = await orders_collection.find_one({"_id": order_id})
+    if not order:
+        await callback.message.answer("\u274c Order not found.")
+        return
+
+    if str(order.get("userId")) != user_id:
+        await callback.message.answer("\u274c This order does not belong to you.")
+        return
+
+    if order.get("paymentStatus") != "delivered":
+        await callback.message.answer(
+            f"\u274c Cannot open dispute. Order status is '{order.get('paymentStatus')}'."
+        )
+        return
+
+    # Check dispute window
+    bot_config = await get_bot_config()
+    dispute_days = (bot_config or {}).get("dispute_window_days", 3)
+    delivered_at = order.get("delivered_at")
+    if delivered_at and isinstance(delivered_at, datetime):
+        if (datetime.utcnow() - delivered_at).days >= dispute_days:
+            await callback.message.answer(
+                f"\u274c The dispute window ({dispute_days} days) has closed for this order."
+            )
+            return
+
+    # Set FSM state to collect dispute reason
+    await state.set_state(DisputeStates.waiting_for_reason)
+    await state.update_data(dispute_order_id=order_id)
+
+    text = (
+        f"\u26a0\ufe0f *Open Dispute for Order #{order_id[:8]}*\n\n"
+        f"Please describe the issue with your order.\n"
+        f"Type your message below:"
+    )
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="\u274c Cancel", callback_data=f"order_detail:{order_id}")]
+    ])
+    try:
+        await callback.message.edit_text(text, parse_mode="Markdown", reply_markup=keyboard)
+    except Exception:
+        await callback.message.answer(text, parse_mode="Markdown", reply_markup=keyboard)
+
+
+@router.message(DisputeStates.waiting_for_reason)
+async def handle_dispute_reason(message: Message, state: FSMContext):
+    """Handle dispute reason text from buyer."""
+    data = await state.get_data()
+    order_id = data.get("dispute_order_id")
+    if not order_id:
+        await state.clear()
+        await message.answer("\u274c Dispute session expired. Please try again from your orders.")
+        return
+
+    reason = message.text
+    if not reason or len(reason.strip()) < 5:
+        await message.answer("Please provide a more detailed description of the issue (at least 5 characters).")
+        return
+
+    user_id = str(message.from_user.id)
+    db = get_database()
+
+    from services.order_state_machine import transition_order
+    result = await transition_order(
+        db, order_id, "disputed", f"buyer:{user_id}",
+        dispute_reason=reason.strip(),
+        note=f"Dispute opened by buyer: {reason.strip()[:100]}",
+    )
+
+    await state.clear()
+
+    if result["success"]:
+        text = (
+            f"\u26a0\ufe0f *Dispute Opened for Order #{order_id[:8]}*\n\n"
+            f"Your dispute has been submitted. The vendor has been notified and will review your case.\n\n"
+            f"*Reason:* {reason.strip()}"
+        )
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="\u2b05\ufe0f Back to Orders", callback_data="show_orders")]
+        ])
+        await message.answer(text, parse_mode="Markdown", reply_markup=keyboard)
+    else:
+        await message.answer(f"\u274c Error opening dispute: {result['error']}")

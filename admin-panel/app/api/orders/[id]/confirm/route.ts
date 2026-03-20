@@ -62,21 +62,40 @@ export async function POST(
     const invoicesCollection = db.collection('invoices');
     const commissionsCollection = db.collection('commissions');
 
-    // Update order to paid (orderId is string; MongoDB accepts it for string _id)
-    await Order.collection.updateOne(
-      { _id: orderId } as any,
+    const now = new Date();
+
+    // Atomic update with state machine pattern: only transition if still pending
+    const updateResult = await Order.collection.findOneAndUpdate(
+      { _id: orderId, paymentStatus: { $in: ['pending', 'failed'] } } as any,
       {
         $set: {
           paymentStatus: 'paid',
+          paid_at: now,
           paymentDetails: {
             status: 'confirmed',
             provider: 'manual',
             manually_confirmed: true,
-            confirmed_at: new Date(),
+            confirmed_at: now,
           },
         },
-      }
+        $push: {
+          status_history: {
+            from_status: currentStatus,
+            to_status: 'paid',
+            changed_by: `vendor:${payload.userId}`,
+            changed_at: now,
+            note: 'Manual payment confirmation from admin panel',
+          },
+        } as any,
+      },
+      { returnDocument: 'after' }
     );
+
+    if (!updateResult) {
+      return NextResponse.json({
+        error: `Cannot confirm: order status is '${currentStatus}', expected 'pending'`,
+      }, { status: 400 });
+    }
 
     // Update invoice status (try multiple lookup strategies)
     let invoice = await invoicesCollection.findOne({ invoice_id: orderId });
@@ -86,16 +105,16 @@ export async function POST(
     if (invoice && invoice.status !== 'Paid') {
       await invoicesCollection.updateOne(
         { _id: invoice._id },
-        { $set: { status: 'Paid' } }
+        { $set: { status: 'Paid', updated_at: now } }
       );
     } else if (!invoice) {
       await invoicesCollection.updateOne(
         { invoice_id: orderId },
-        { $set: { status: 'Paid' } }
+        { $set: { status: 'Paid', updated_at: now } }
       );
       await invoicesCollection.updateMany(
         { payment_invoice_id: orderId },
-        { $set: { status: 'Paid' } }
+        { $set: { status: 'Paid', updated_at: now } }
       );
     }
 

@@ -239,6 +239,9 @@ async def main():
     # Startup and shutdown handlers
     async def startup_handler(app):
         await on_startup(bot)
+        # Start the order scheduler for auto-transitions (expire, auto-deliver, auto-complete)
+        from services.order_scheduler import run_order_scheduler
+        asyncio.create_task(run_order_scheduler())
     
     async def shutdown_handler(app):
         await on_shutdown(bot)

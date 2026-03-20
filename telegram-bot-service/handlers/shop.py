@@ -2934,7 +2934,14 @@ async def handle_confirm_checkout(callback: CallbackQuery):
         "discount_code": invoice.get("discount_code"),
         "discount_amount": discount_amount,
         "items": invoice.get("items", []),  # Store all items in the order
-        "secret_phrase_hash": secret_phrase_hash
+        "secret_phrase_hash": secret_phrase_hash,
+        "status_history": [{
+            "from_status": None,
+            "to_status": "pending",
+            "changed_by": f"buyer:{user_id}",
+            "changed_at": datetime.utcnow(),
+            "note": "Order placed",
+        }],
     }
     
     # Insert order (this is fast, no need to parallelize)
@@ -4191,9 +4198,16 @@ async def process_checkout_with_address(callback: CallbackQuery, selected_curren
             "commission": commission,
             "commission_rate": COMMISSION_RATE,
             "currency": selected_currency.upper(),  # Store payment currency (BTC, LTC, etc.)
-            "timestamp": datetime.utcnow()
+            "timestamp": datetime.utcnow(),
+            "status_history": [{
+                "from_status": None,
+                "to_status": "pending",
+                "changed_by": f"buyer:{user_id}",
+                "changed_at": datetime.utcnow(),
+                "note": "Order placed",
+            }],
         }
-        
+
         # Add encrypted address if available
         if encrypted_address:
             order["encrypted_address"] = encrypted_address

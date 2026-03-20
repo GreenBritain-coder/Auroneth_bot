@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 
 interface Order {
   _id: string;
@@ -47,12 +48,30 @@ export default function OrdersPage() {
     }
   };
 
+  const router = useRouter();
+
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'paid':
         return 'bg-green-100 text-green-800';
       case 'pending':
         return 'bg-yellow-100 text-yellow-800';
+      case 'confirmed':
+        return 'bg-blue-100 text-blue-800';
+      case 'shipped':
+        return 'bg-indigo-100 text-indigo-800';
+      case 'delivered':
+        return 'bg-purple-100 text-purple-800';
+      case 'completed':
+        return 'bg-green-100 text-green-800';
+      case 'disputed':
+        return 'bg-red-100 text-red-800';
+      case 'expired':
+        return 'bg-gray-100 text-gray-800';
+      case 'cancelled':
+        return 'bg-red-100 text-red-800';
+      case 'refunded':
+        return 'bg-orange-100 text-orange-800';
       case 'failed':
         return 'bg-red-100 text-red-800';
       default:
@@ -417,17 +436,25 @@ export default function OrdersPage() {
                       )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm">
-                      {orderId && (order.paymentStatus || '').toLowerCase() !== 'paid' ? (
-                        <button
-                          onClick={() => confirmPayment(orderId)}
-                          disabled={confirmingOrderId === orderId}
-                          className="inline-flex items-center px-3 py-1.5 rounded-md text-sm font-medium bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
-                        >
-                          {confirmingOrderId === orderId ? 'Confirming...' : 'Confirm payment'}
-                        </button>
-                      ) : (
-                        <span className="text-gray-400 text-xs">—</span>
-                      )}
+                      <div className="flex items-center space-x-2">
+                        {orderId && (
+                          <button
+                            onClick={() => router.push(`/admin/orders/${orderId}`)}
+                            className="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-gray-100 text-gray-700 hover:bg-gray-200"
+                          >
+                            View
+                          </button>
+                        )}
+                        {orderId && (order.paymentStatus || '').toLowerCase() === 'pending' && (
+                          <button
+                            onClick={() => confirmPayment(orderId)}
+                            disabled={confirmingOrderId === orderId}
+                            className="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            {confirmingOrderId === orderId ? '...' : 'Confirm Pay'}
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}
