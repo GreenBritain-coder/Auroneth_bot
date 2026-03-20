@@ -1,6 +1,7 @@
 """
 Order management handlers - view user orders with status-grouped view,
-order detail with timeline, buyer actions (confirm receipt, open dispute).
+order detail with timeline, buyer actions (confirm receipt, open dispute),
+and quick reorder from past purchases.
 """
 from aiogram import Router, F
 from aiogram.filters import Command
@@ -176,6 +177,26 @@ async def show_user_orders(message_or_callback: Union[Message, CallbackQuery]):
     text = "\U0001f4e6 *My Orders*\n\n"
 
     keyboard_buttons = []
+
+    # Quick Reorder section - show last completed/delivered/paid order
+    reorderable_statuses = {"completed", "delivered", "paid"}
+    last_reorderable = None
+    for o in orders:
+        if o.get("paymentStatus") in reorderable_statuses:
+            last_reorderable = o
+            break
+
+    if last_reorderable:
+        display_id, product_name, date_str = await _order_summary_line(last_reorderable, products_collection)
+        reorder_id = str(last_reorderable["_id"])
+        text += "\U0001f504 *Quick Reorder:*\n"
+        text += f"  Last order: `{display_id}` - {product_name} ({date_str})\n\n"
+        keyboard_buttons.append([
+            InlineKeyboardButton(
+                text="\U0001f504 Reorder Last Order",
+                callback_data=f"reorder:{reorder_id}",
+            )
+        ])
 
     # Active Orders section
     if active:
@@ -438,6 +459,12 @@ async def handle_order_detail_view(callback: CallbackQuery):
             InlineKeyboardButton(text="\u2705 Confirm Receipt", callback_data=f"confirm_receipt:{order_id}"),
         ])
 
+    # Reorder button for completed, delivered, or paid orders
+    if status in ("completed", "delivered", "paid"):
+        buttons.append([
+            InlineKeyboardButton(text="\U0001f504 Reorder", callback_data=f"reorder:{order_id}"),
+        ])
+
     # Back to orders button always
     buttons.append([
         InlineKeyboardButton(text="\u2b05\ufe0f Back to Orders", callback_data="show_orders"),
@@ -548,6 +575,189 @@ async def handle_order_detail(callback: CallbackQuery):
     else:
         error_msg = f"\u274c Invoice not found for order {order_id}."
         await callback.message.answer(error_msg, parse_mode="Markdown")
+
+
+# ---------- Reorder from past purchase ----------
+
+REORDERABLE_STATUSES = {"completed", "delivered", "paid"}
+
+
+@router.callback_query(F.data.startswith("reorder:"))
+async def handle_reorder(callback: CallbackQuery):
+    """Add all items from a past order back into the customer's cart."""
+    await safe_answer_callback(callback)
+
+    order_id = callback.data.split(":")[1]
+
+    bot_config = await get_bot_config()
+    if not bot_config:
+        await callback.message.answer("\u274c Bot configuration not found.")
+        return
+
+    bot_id = str(bot_config["_id"])
+    user_id = str(callback.from_user.id)
+
+    db = get_database()
+    orders_collection = db.orders
+    products_collection = db.products
+    carts_collection = db.carts
+
+    # Fetch the order
+    order = await orders_collection.find_one({"_id": order_id})
+    if not order:
+        await callback.message.answer("\u274c Order not found.")
+        return
+
+    # Verify ownership
+    if str(order.get("userId")) != user_id:
+        await callback.message.answer("\u274c This order does not belong to you.")
+        return
+
+    # Verify order is in a reorderable status
+    if order.get("paymentStatus") not in REORDERABLE_STATUSES:
+        await callback.message.answer("\u274c This order cannot be reordered.")
+        return
+
+    # Collect items from the order
+    items = order.get("items", [])
+    if not items:
+        # Legacy single-product order
+        product_id = order.get("productId")
+        if product_id:
+            items = [{
+                "product_id": str(product_id),
+                "variation_index": order.get("variation_index"),
+                "quantity": order.get("quantity", 1),
+            }]
+
+    if not items:
+        await callback.message.answer("\u274c No items found in this order.")
+        return
+
+    # Import find_by_id from shop to look up products consistently
+    from handlers.shop import find_by_id
+
+    added_items = []
+    skipped_items = []
+
+    # Get or create cart
+    cart = await carts_collection.find_one({
+        "user_id": user_id,
+        "bot_id": bot_id,
+    })
+    if not cart:
+        cart = {
+            "user_id": user_id,
+            "bot_id": bot_id,
+            "items": [],
+            "updated_at": None,
+        }
+        result = await carts_collection.insert_one(cart)
+        cart["_id"] = result.inserted_id
+
+    for item in items:
+        product_id = item.get("product_id") or str(item.get("productId", ""))
+        if not product_id:
+            skipped_items.append("Unknown product (missing ID)")
+            continue
+
+        product = await find_by_id(products_collection, product_id)
+        if not product:
+            skipped_items.append(f"Product removed")
+            continue
+
+        quantity = item.get("quantity", 1)
+        variation_index = item.get("variation_index")
+        unit = item.get("unit") or product.get("unit", "pcs")
+
+        # Calculate current price (use current price, not old price)
+        base_price = product.get("base_price") or product.get("price", 0)
+        price = base_price
+
+        if variation_index is not None:
+            variations = product.get("variations", [])
+            if isinstance(variation_index, int) and variation_index < len(variations):
+                variation = variations[variation_index]
+                price = base_price + variation.get("price_modifier", 0)
+                # Check variation stock
+                stock = variation.get("stock")
+                if stock is not None and stock <= 0:
+                    var_name = variation.get("name", f"variation {variation_index}")
+                    skipped_items.append(f"{product['name']} - {var_name} (out of stock)")
+                    continue
+                if stock is not None and quantity > stock:
+                    quantity = stock  # Add what's available
+            else:
+                # Variation no longer exists
+                skipped_items.append(f"{product['name']} (variation no longer available)")
+                continue
+        else:
+            # Check product-level stock
+            stock = product.get("stock")
+            if stock is not None and stock <= 0:
+                skipped_items.append(f"{product['name']} (out of stock)")
+                continue
+            if stock is not None and quantity > stock:
+                quantity = stock
+
+        # Build cart item (same structure as shop.py add-to-cart)
+        cart_item = {
+            "product_id": product_id,
+            "variation_index": variation_index,
+            "quantity": quantity,
+            "price": price,
+            "unit": unit,
+        }
+
+        # Push item to cart
+        await carts_collection.update_one(
+            {"_id": cart["_id"]},
+            {
+                "$push": {"items": cart_item},
+                "$set": {"updated_at": datetime.utcnow()},
+            },
+        )
+
+        # Build display name
+        pname = product["name"]
+        if variation_index is not None:
+            variations = product.get("variations", [])
+            if isinstance(variation_index, int) and variation_index < len(variations):
+                pname += f" - {variations[variation_index]['name']}"
+        added_items.append(pname)
+
+    # Build confirmation message
+    if added_items:
+        text = f"\u2705 *Added {len(added_items)} item{'s' if len(added_items) != 1 else ''} to cart:*\n"
+        for name in added_items:
+            text += f"  \u2022 {name}\n"
+    else:
+        text = "\u274c Could not add any items to cart.\n"
+
+    if skipped_items:
+        text += f"\n\u26a0\ufe0f *Could not add:*\n"
+        for reason in skipped_items:
+            text += f"  \u2022 {reason}\n"
+
+    buttons = []
+    if added_items:
+        buttons.append([
+            InlineKeyboardButton(text="\U0001f6d2 View Cart", callback_data="view_cart"),
+        ])
+    buttons.append([
+        InlineKeyboardButton(text="\u2b05\ufe0f Back to Orders", callback_data="show_orders"),
+    ])
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
+
+    try:
+        await callback.message.edit_text(text, parse_mode="Markdown", reply_markup=keyboard)
+    except Exception:
+        try:
+            await callback.message.delete()
+        except Exception:
+            pass
+        await callback.message.answer(text, parse_mode="Markdown", reply_markup=keyboard)
 
 
 # ---------- Back to Orders callback ----------
