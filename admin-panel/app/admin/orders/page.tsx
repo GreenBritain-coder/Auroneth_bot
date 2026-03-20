@@ -12,460 +12,398 @@ interface Order {
   paymentStatus: string;
   amount: number;
   commission: number;
+  currency?: string;
   timestamp: string;
   encrypted_address?: string;
   notes?: string;
+  tracking_info?: string;
+}
+
+const STATUS_COLORS: Record<string, string> = {
+  pending: 'bg-yellow-100 text-yellow-800',
+  paid: 'bg-green-100 text-green-800',
+  confirmed: 'bg-blue-100 text-blue-800',
+  shipped: 'bg-indigo-100 text-indigo-800',
+  delivered: 'bg-purple-100 text-purple-800',
+  completed: 'bg-emerald-100 text-emerald-800',
+  disputed: 'bg-red-100 text-red-800',
+  expired: 'bg-gray-100 text-gray-800',
+  cancelled: 'bg-red-100 text-red-800',
+  refunded: 'bg-orange-100 text-orange-800',
+  failed: 'bg-red-100 text-red-800',
+};
+
+const VENDOR_ACTIONS: Record<string, Array<{
+  status: string;
+  label: string;
+  color: string;
+  requiresInput?: string;
+}>> = {
+  pending: [
+    { status: 'paid', label: 'Confirm Payment', color: 'bg-green-600 hover:bg-green-700 text-white' },
+    { status: 'cancelled', label: 'Cancel', color: 'bg-red-600 hover:bg-red-700 text-white', requiresInput: 'cancellation_reason' },
+  ],
+  paid: [
+    { status: 'confirmed', label: 'Confirm Order', color: 'bg-blue-600 hover:bg-blue-700 text-white' },
+    { status: 'cancelled', label: 'Cancel', color: 'bg-red-600 hover:bg-red-700 text-white', requiresInput: 'cancellation_reason' },
+    { status: 'refunded', label: 'Refund', color: 'bg-orange-600 hover:bg-orange-700 text-white', requiresInput: 'refund_txid' },
+  ],
+  confirmed: [
+    { status: 'shipped', label: 'Mark Shipped', color: 'bg-indigo-600 hover:bg-indigo-700 text-white', requiresInput: 'tracking_info' },
+    { status: 'cancelled', label: 'Cancel', color: 'bg-red-600 hover:bg-red-700 text-white', requiresInput: 'cancellation_reason' },
+  ],
+  shipped: [
+    { status: 'delivered', label: 'Mark Delivered', color: 'bg-green-600 hover:bg-green-700 text-white' },
+    { status: 'refunded', label: 'Refund', color: 'bg-orange-600 hover:bg-orange-700 text-white', requiresInput: 'refund_txid' },
+  ],
+  delivered: [],
+  disputed: [
+    { status: 'completed', label: 'Resolve', color: 'bg-green-600 hover:bg-green-700 text-white' },
+    { status: 'refunded', label: 'Refund', color: 'bg-orange-600 hover:bg-orange-700 text-white', requiresInput: 'refund_txid' },
+  ],
+  cancelled: [],
+  completed: [],
+  expired: [],
+  refunded: [],
+  failed: [],
+};
+
+const FILTER_TABS = ['all', 'pending', 'paid', 'confirmed', 'shipped', 'delivered', 'completed', 'cancelled', 'expired'];
+
+function formatAmount(amount: number | undefined, currency?: string): string {
+  if (!amount) return '0.00';
+  const s = amount.toFixed(8).replace(/\.?0+$/, '');
+  if (currency && ['GBP', 'USD', 'EUR'].includes(currency.toUpperCase())) {
+    const sym = currency === 'GBP' ? '\u00a3' : currency === 'EUR' ? '\u20ac' : '$';
+    return `${sym}${Number(amount).toFixed(2)}`;
+  }
+  return s;
 }
 
 export default function OrdersPage() {
+  const router = useRouter();
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [activeFilter, setActiveFilter] = useState('all');
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [expandedAction, setExpandedAction] = useState<{ orderId: string; action: any } | null>(null);
+  const [actionInput, setActionInput] = useState('');
   const [decryptedAddresses, setDecryptedAddresses] = useState<Record<string, string>>({});
   const [loadingAddresses, setLoadingAddresses] = useState<Record<string, boolean>>({});
-  const [addressErrors, setAddressErrors] = useState<Record<string, string>>({});
-  const [secretPhraseInputs, setSecretPhraseInputs] = useState<Record<string, string>>({});
-  const [showSecretPhraseInput, setShowSecretPhraseInput] = useState<Record<string, boolean>>({});
-  const [confirmingOrderId, setConfirmingOrderId] = useState<string | null>(null);
 
-  useEffect(() => {
-    fetchOrders();
-  }, []);
+  useEffect(() => { fetchOrders(); }, []);
 
   const fetchOrders = async () => {
     try {
       const response = await fetch('/api/orders');
       if (response.ok) {
-        const data = await response.json();
-        setOrders(data);
+        setOrders(await response.json());
       } else {
         setError('Failed to fetch orders');
       }
-    } catch (err) {
-      setError('Network error');
-    } finally {
-      setLoading(false);
-    }
+    } catch { setError('Network error'); }
+    finally { setLoading(false); }
   };
 
-  const router = useRouter();
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'paid':
-        return 'bg-green-100 text-green-800';
-      case 'pending':
-        return 'bg-yellow-100 text-yellow-800';
-      case 'confirmed':
-        return 'bg-blue-100 text-blue-800';
-      case 'shipped':
-        return 'bg-indigo-100 text-indigo-800';
-      case 'delivered':
-        return 'bg-purple-100 text-purple-800';
-      case 'completed':
-        return 'bg-green-100 text-green-800';
-      case 'disputed':
-        return 'bg-red-100 text-red-800';
-      case 'expired':
-        return 'bg-gray-100 text-gray-800';
-      case 'cancelled':
-        return 'bg-red-100 text-red-800';
-      case 'refunded':
-        return 'bg-orange-100 text-orange-800';
-      case 'failed':
-        return 'bg-red-100 text-red-800';
-      default:
-        return 'bg-gray-100 text-gray-800';
-    }
+  const handleStatusChange = async (orderId: string, newStatus: string, extra?: Record<string, string>) => {
+    setActionLoading(orderId);
+    try {
+      const response = await fetch(`/api/orders/${orderId}/status`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus, ...extra }),
+      });
+      const data = await response.json();
+      if (response.ok && data.success) {
+        setOrders(prev => prev.map(o =>
+          o._id === orderId ? { ...o, paymentStatus: newStatus } : o
+        ));
+        setExpandedAction(null);
+        setActionInput('');
+      } else {
+        alert(data.error || 'Failed to update status');
+      }
+    } catch { alert('Network error'); }
+    finally { setActionLoading(null); }
   };
 
   const confirmPayment = async (orderId: string) => {
-    if (!confirm('Mark this order as paid? Only do this if you have verified the payment.')) {
-      return;
-    }
-    setConfirmingOrderId(orderId);
+    if (!confirm('Mark this order as paid? Only do this if you have verified the payment.')) return;
+    setActionLoading(orderId);
     try {
       const response = await fetch(`/api/orders/${orderId}/confirm`, { method: 'POST' });
       const data = await response.json();
       if (response.ok && data.success) {
-        setOrders(prev =>
-          prev.map(o => (o._id === orderId ? { ...o, paymentStatus: 'paid' } : o))
-        );
-      } else {
-        alert(data.error || 'Failed to confirm order');
-      }
-    } catch (err) {
-      alert('Network error');
-    } finally {
-      setConfirmingOrderId(null);
-    }
+        setOrders(prev => prev.map(o => o._id === orderId ? { ...o, paymentStatus: 'paid' } : o));
+      } else { alert(data.error || 'Failed'); }
+    } catch { alert('Network error'); }
+    finally { setActionLoading(null); }
   };
 
-  const decryptAddress = async (orderId: string | null, secretPhrase?: string) => {
-    if (!orderId || orderId === 'undefined' || orderId === 'null') {
-      console.error('Cannot decrypt address: invalid order ID', orderId);
-      return;
-    }
-
-    if (decryptedAddresses[orderId] || loadingAddresses[orderId]) {
-      return; // Already decrypted or loading
-    }
-
-    console.log('Decrypting address for order:', orderId);
+  const decryptAddress = async (orderId: string) => {
+    if (decryptedAddresses[orderId] || loadingAddresses[orderId]) return;
     setLoadingAddresses(prev => ({ ...prev, [orderId]: true }));
-
     try {
       const response = await fetch(`/api/orders/${orderId}/decrypt-address`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ secretPhrase }),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
       });
-      
-      console.log('Decrypt response status:', response.status);
-
       if (response.ok) {
         const data = await response.json();
         if (data.success && data.address) {
           setDecryptedAddresses(prev => ({ ...prev, [orderId]: data.address }));
-          // Clear any previous errors and hide secret phrase input
-          setAddressErrors(prev => {
-            const newErrors = { ...prev };
-            delete newErrors[orderId];
-            return newErrors;
-          });
-          setShowSecretPhraseInput(prev => {
-            const newState = { ...prev };
-            delete newState[orderId];
-            return newState;
-          });
-          setSecretPhraseInputs(prev => {
-            const newState = { ...prev };
-            delete newState[orderId];
-            return newState;
-          });
-        } else {
-          setAddressErrors(prev => ({ ...prev, [orderId]: data.message || 'No address available' }));
         }
-      } else {
-        const errorData = await response.json();
-        const errorMessage = errorData.error || 'Failed to decrypt';
-        const isSecretPhraseMismatch = errorData.errorCode === 'SECRET_PHRASE_MISMATCH' || 
-                                       errorMessage.includes('different secret phrase');
-        
-        setAddressErrors(prev => ({ ...prev, [orderId]: errorMessage }));
-        // Show secret phrase input if it's a mismatch error
-        if (isSecretPhraseMismatch && !secretPhrase) {
-          setShowSecretPhraseInput(prev => ({ ...prev, [orderId]: true }));
-        }
-        // Clear from decrypted addresses if it was there
-        setDecryptedAddresses(prev => {
-          const newAddrs = { ...prev };
-          delete newAddrs[orderId];
-          return newAddrs;
-        });
       }
-    } catch (err) {
-      setAddressErrors(prev => ({ ...prev, [orderId]: 'Error decrypting address' }));
-    } finally {
-      setLoadingAddresses(prev => {
-        const newState = { ...prev };
-        delete newState[orderId];
-        return newState;
-      });
-    }
+    } catch {}
+    finally { setLoadingAddresses(prev => { const n = { ...prev }; delete n[orderId]; return n; }); }
   };
 
-  if (loading) {
-    return <div className="text-center py-8">Loading...</div>;
-  }
+  if (loading) return <div className="text-center py-12 text-gray-500">Loading orders...</div>;
 
-  const totalCommission = orders
-    .filter((o) => o.paymentStatus === 'paid')
-    .reduce((sum, o) => sum + o.commission, 0);
+  // Compute counts per status
+  const counts: Record<string, number> = { all: orders.length };
+  orders.forEach(o => {
+    const s = o.paymentStatus || 'unknown';
+    counts[s] = (counts[s] || 0) + 1;
+  });
+
+  const filtered = activeFilter === 'all'
+    ? orders
+    : orders.filter(o => o.paymentStatus === activeFilter);
+
+  const totalRevenue = orders.filter(o => o.paymentStatus === 'paid' || o.paymentStatus === 'confirmed' || o.paymentStatus === 'shipped' || o.paymentStatus === 'delivered' || o.paymentStatus === 'completed')
+    .reduce((s, o) => s + (o.amount || 0), 0);
+  const totalCommission = orders.filter(o => o.paymentStatus === 'paid' || o.paymentStatus === 'confirmed' || o.paymentStatus === 'shipped' || o.paymentStatus === 'delivered' || o.paymentStatus === 'completed')
+    .reduce((s, o) => s + (o.commission || 0), 0);
+
+  const inputLabels: Record<string, { title: string; placeholder: string }> = {
+    tracking_info: { title: 'Tracking Info', placeholder: 'e.g. Royal Mail - AB123456789GB' },
+    cancellation_reason: { title: 'Cancellation Reason', placeholder: 'Reason for cancellation' },
+    refund_txid: { title: 'Refund TX Hash', placeholder: 'Blockchain transaction hash' },
+  };
 
   return (
     <div className="w-full min-w-0">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Orders & Commissions</h1>
-        <div className="bg-indigo-50 px-4 py-2 rounded-md">
-          <span className="text-sm text-gray-600">Total Commission:</span>
-          <span className="ml-2 font-bold text-indigo-700">{totalCommission.toFixed(8)}</span>
+      {/* Header */}
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold text-gray-900 mb-4">Orders</h1>
+
+        {/* Stats bar */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+          <div className="bg-white rounded-lg shadow-sm p-3 border border-gray-100">
+            <div className="text-xs text-gray-500 uppercase tracking-wide">Total Orders</div>
+            <div className="text-xl font-bold text-gray-900 mt-1">{orders.length}</div>
+          </div>
+          <div className="bg-white rounded-lg shadow-sm p-3 border border-gray-100">
+            <div className="text-xs text-gray-500 uppercase tracking-wide">Needs Action</div>
+            <div className="text-xl font-bold text-yellow-600 mt-1">{(counts['pending'] || 0) + (counts['paid'] || 0)}</div>
+          </div>
+          <div className="bg-white rounded-lg shadow-sm p-3 border border-gray-100">
+            <div className="text-xs text-gray-500 uppercase tracking-wide">Revenue</div>
+            <div className="text-xl font-bold text-gray-900 mt-1">{formatAmount(totalRevenue)}</div>
+          </div>
+          <div className="bg-white rounded-lg shadow-sm p-3 border border-gray-100">
+            <div className="text-xs text-gray-500 uppercase tracking-wide">Commission</div>
+            <div className="text-xl font-bold text-indigo-600 mt-1">{formatAmount(totalCommission)}</div>
+          </div>
+        </div>
+
+        {/* Filter tabs */}
+        <div className="flex flex-wrap gap-1 bg-white rounded-lg shadow-sm p-1 border border-gray-100">
+          {FILTER_TABS.map(tab => (
+            <button
+              key={tab}
+              onClick={() => setActiveFilter(tab)}
+              className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                activeFilter === tab
+                  ? 'bg-indigo-600 text-white shadow-sm'
+                  : 'text-gray-600 hover:bg-gray-100'
+              }`}
+            >
+              {tab.charAt(0).toUpperCase() + tab.slice(1)}
+              {(counts[tab] || 0) > 0 && (
+                <span className={`ml-1.5 px-1.5 py-0.5 rounded-full text-[10px] ${
+                  activeFilter === tab ? 'bg-indigo-500 text-white' : 'bg-gray-200 text-gray-600'
+                }`}>
+                  {counts[tab] || 0}
+                </span>
+              )}
+            </button>
+          ))}
         </div>
       </div>
 
       {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded mb-4">
-          {error}
-        </div>
+        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-4">{error}</div>
       )}
 
-      <div className="bg-white shadow rounded-md overflow-x-auto">
-        <table className="min-w-full min-w-[1100px] divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Order ID
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Bot
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  User ID
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Amount
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Commission
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Status
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Date
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Address
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Notes
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Actions
-                </th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {orders
-                .map((order, index) => {
-                  // Safely handle _id - convert to string if it's an object, handle undefined
-                  let orderId: string | null = null;
-                  
-                  if (order._id) {
-                    if (typeof order._id === 'string') {
-                      // Check if it's actually a valid ID (not "undefined" string)
-                      if (order._id !== 'undefined' && order._id !== 'null' && order._id.trim() !== '') {
-                        orderId = order._id;
-                      }
-                    } else {
-                      // It's an object (ObjectId), convert to string
-                      const idStr = String(order._id);
-                      if (idStr !== 'undefined' && idStr !== 'null' && idStr.trim() !== '') {
-                        orderId = idStr;
-                      }
-                    }
-                  }
-                  
-                  const displayId = orderId 
-                    ? `${orderId.substring(0, 8)}...` 
-                    : `Order ${index + 1}`;
-                  
-                  // Ensure unique key - use orderId if available, otherwise use index
-                  // Never use "undefined" as a key
-                  const uniqueKey = orderId ? `order-${orderId}` : `order-index-${index}`;
-                  
-                  return { order, orderId, displayId, uniqueKey, index };
-                })
-                .map(({ order, orderId, displayId, uniqueKey }) => (
-                  <tr key={uniqueKey}>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-gray-900">
-                      {displayId}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {order.botName || order.botId || 'N/A'}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {order.userId || 'N/A'}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {order.amount ? order.amount.toFixed(8) : '0.00000000'}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {order.commission ? order.commission.toFixed(8) : '0.00000000'}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span
-                        className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(
-                          order.paymentStatus || 'unknown'
-                        )}`}
-                      >
-                        {order.paymentStatus || 'unknown'}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {order.timestamp ? new Date(order.timestamp).toLocaleDateString() : 'N/A'}
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-500">
-                      {order.encrypted_address && orderId ? (
-                        <div>
-                          {decryptedAddresses[orderId] ? (
-                            <div className="max-w-xs">
-                              <div className="text-xs text-gray-400 mb-1">Decrypted:</div>
-                              <div className="font-mono text-xs bg-gray-50 p-2 rounded break-words">
-                                {decryptedAddresses[orderId]}
-                              </div>
-                              <div className="text-xs text-gray-400 mt-1">
-                                (Order ID: {orderId.substring(0, 8)}...)
-                              </div>
-                            </div>
-                          ) : addressErrors[orderId] ? (
-                            <div className="max-w-xs">
-                              <div className="text-xs text-red-600 mb-1">⚠️ Decryption Failed:</div>
-                              <div className="text-xs bg-red-50 border border-red-200 text-red-700 p-2 rounded break-words">
-                                {addressErrors[orderId].includes('different secret phrase') || addressErrors[orderId].includes('SECRET_PHRASE_MISMATCH') ? (
-                                  <div>
-                                    <div className="font-semibold mb-1">Secret Phrase Changed</div>
-                                    <div className="text-xs mb-2">
-                                      The user changed their secret phrase after creating this order. 
-                                      The address was encrypted with their old secret phrase and cannot be decrypted with the current one.
-                                    </div>
-                                  </div>
-                                ) : (
-                                  addressErrors[orderId]
-                                )}
-                              </div>
-                              {showSecretPhraseInput[orderId] && (
-                                <div className="mt-2">
-                                  <label className="block text-xs text-gray-700 mb-1">
-                                    Enter old secret phrase:
-                                  </label>
-                                  <input
-                                    type="password"
-                                    value={secretPhraseInputs[orderId] || ''}
-                                    onChange={(e) => setSecretPhraseInputs(prev => ({ ...prev, [orderId]: e.target.value }))}
-                                    placeholder="Enter secret phrase used when order was created"
-                                    className="text-xs w-full px-2 py-1 border border-gray-300 rounded mb-1"
-                                  />
-                                  <div className="flex gap-2">
-                                    <button
-                                      onClick={() => {
-                                        if (orderId && secretPhraseInputs[orderId]) {
-                                          decryptAddress(orderId, secretPhraseInputs[orderId]);
-                                        }
-                                      }}
-                                      disabled={!secretPhraseInputs[orderId] || loadingAddresses[orderId]}
-                                      className="text-xs text-indigo-600 hover:text-indigo-900 font-medium disabled:opacity-50"
-                                    >
-                                      Decrypt with Phrase
-                                    </button>
-                                    <button
-                                      onClick={() => {
-                                        setShowSecretPhraseInput(prev => {
-                                          const newState = { ...prev };
-                                          delete newState[orderId];
-                                          return newState;
-                                        });
-                                        setSecretPhraseInputs(prev => {
-                                          const newState = { ...prev };
-                                          delete newState[orderId];
-                                          return newState;
-                                        });
-                                      }}
-                                      className="text-xs text-gray-600 hover:text-gray-900"
-                                    >
-                                      Cancel
-                                    </button>
-                                  </div>
-                                </div>
-                              )}
-                              {!showSecretPhraseInput[orderId] && (
-                                <div className="flex gap-2 mt-1">
-                                  <button
-                                    onClick={() => {
-                                      if (orderId && orderId !== 'undefined' && orderId !== 'null') {
-                                        // Show secret phrase input
-                                        setShowSecretPhraseInput(prev => ({ ...prev, [orderId]: true }));
-                                      }
-                                    }}
-                                    className="text-xs text-indigo-600 hover:text-indigo-900 underline"
-                                  >
-                                    Enter Secret Phrase
-                                  </button>
-                                  <button
-                                    onClick={() => {
-                                      if (orderId && orderId !== 'undefined' && orderId !== 'null') {
-                                        // Clear error and retry with current phrase
-                                        setAddressErrors(prev => {
-                                          const newErrors = { ...prev };
-                                          delete newErrors[orderId];
-                                          return newErrors;
-                                        });
-                                        decryptAddress(orderId);
-                                      }
-                                    }}
-                                    className="text-xs text-indigo-600 hover:text-indigo-900 underline"
-                                  >
-                                    Retry
-                                  </button>
-                                </div>
-                              )}
-                            </div>
-                          ) : (
-                            <button
-                              onClick={() => {
-                                if (orderId && orderId !== 'undefined' && orderId !== 'null') {
-                                  console.log('Decrypting address for order:', orderId, 'timestamp:', order.timestamp);
-                                  decryptAddress(orderId);
-                                } else {
-                                  console.error('Invalid order ID:', orderId);
-                                }
-                              }}
-                              disabled={loadingAddresses[orderId] || !orderId}
-                              className="text-indigo-600 hover:text-indigo-900 text-xs font-medium disabled:opacity-50"
-                            >
-                              {loadingAddresses[orderId] ? 'Decrypting...' : '🔓 View Address'}
-                            </button>
-                          )}
-                        </div>
-                      ) : (
-                        <span className="text-gray-400 text-xs">No address</span>
-                      )}
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-500">
-                      {order.notes ? (
-                        <div className="max-w-xs">
-                          <div className="text-xs text-gray-400 mb-1">📝</div>
-                          <div className="text-xs bg-gray-50 p-2 rounded break-words">
-                            {order.notes}
-                          </div>
-                        </div>
-                      ) : (
-                        <span className="text-gray-400 text-xs">-</span>
-                      )}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm">
-                      <div className="flex items-center space-x-2">
-                        {orderId && (
-                          <button
-                            onClick={() => router.push(`/admin/orders/${orderId}`)}
-                            className="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-gray-100 text-gray-700 hover:bg-gray-200"
-                          >
-                            View
-                          </button>
-                        )}
-                        {orderId && (order.paymentStatus || '').toLowerCase() === 'pending' && (
-                          <button
-                            onClick={() => confirmPayment(orderId)}
-                            disabled={confirmingOrderId === orderId}
-                            className="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                          >
-                            {confirmingOrderId === orderId ? '...' : 'Confirm Pay'}
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-            </tbody>
-          </table>
+      {/* Order cards */}
+      <div className="space-y-3">
+        {filtered.map((order) => {
+          const orderId = order._id && order._id !== 'undefined' && order._id !== 'null' ? order._id : null;
+          if (!orderId) return null;
+          const status = order.paymentStatus || 'unknown';
+          const actions = VENDOR_ACTIONS[status] || [];
+          const currency = (order as any).currency || '';
+          const isExpanded = expandedAction?.orderId === orderId;
+
+          return (
+            <div key={orderId} className="bg-white rounded-lg shadow-sm border border-gray-100 p-4 hover:shadow-md transition-shadow">
+              {/* Row 1: ID, Bot, Date, Status */}
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-3 text-sm">
+                  <span className="font-mono font-semibold text-gray-900">#{orderId.substring(0, 8)}</span>
+                  <span className="text-gray-400">&middot;</span>
+                  <span className="text-gray-600">{order.botName || 'Bot'}</span>
+                  <span className="text-gray-400">&middot;</span>
+                  <span className="text-gray-500">{order.timestamp ? new Date(order.timestamp).toLocaleDateString() : ''}</span>
+                </div>
+                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${STATUS_COLORS[status] || 'bg-gray-100 text-gray-800'}`}>
+                  {status}
+                </span>
+              </div>
+
+              {/* Row 2: User + Amounts */}
+              <div className="flex items-center justify-between text-sm mb-3">
+                <span className="text-gray-500">User: <span className="font-mono text-gray-700">{order.userId || 'N/A'}</span></span>
+                <div className="flex items-center gap-4">
+                  <span className="text-gray-700">
+                    <span className="text-gray-400 text-xs">Amount:</span>{' '}
+                    <span className="font-semibold">{formatAmount(order.amount, currency)} {currency}</span>
+                  </span>
+                  <span className="text-gray-500">
+                    <span className="text-gray-400 text-xs">Comm:</span>{' '}
+                    <span className="font-medium">{formatAmount(order.commission, currency)} {currency}</span>
+                  </span>
+                </div>
+              </div>
+
+              {/* Row 3: Notes / Tracking */}
+              {(order.notes || order.tracking_info) && (
+                <div className="text-xs text-gray-500 mb-3 bg-gray-50 rounded p-2">
+                  {order.tracking_info && <div>Tracking: <span className="font-mono">{order.tracking_info}</span></div>}
+                  {order.notes && <div>Notes: {order.notes}</div>}
+                </div>
+              )}
+
+              {/* Row 4: Actions */}
+              <div className="flex items-center gap-2 flex-wrap">
+                {/* Status transition actions */}
+                {status === 'pending' ? (
+                  <>
+                    <button
+                      onClick={() => confirmPayment(orderId)}
+                      disabled={actionLoading === orderId}
+                      className="px-3 py-1.5 rounded-md text-xs font-medium bg-green-600 hover:bg-green-700 text-white disabled:opacity-50"
+                    >
+                      {actionLoading === orderId ? '...' : 'Confirm Payment'}
+                    </button>
+                    <button
+                      onClick={() => {
+                        setExpandedAction({ orderId, action: VENDOR_ACTIONS.pending[1] });
+                        setActionInput('');
+                      }}
+                      className="px-3 py-1.5 rounded-md text-xs font-medium bg-red-600 hover:bg-red-700 text-white"
+                    >
+                      Cancel
+                    </button>
+                  </>
+                ) : (
+                  actions.map((action, i) => (
+                    <button
+                      key={i}
+                      onClick={() => {
+                        if (action.requiresInput) {
+                          setExpandedAction({ orderId, action });
+                          setActionInput('');
+                        } else {
+                          if (confirm(`${action.label}?`)) {
+                            handleStatusChange(orderId, action.status);
+                          }
+                        }
+                      }}
+                      disabled={actionLoading === orderId}
+                      className={`px-3 py-1.5 rounded-md text-xs font-medium ${action.color} disabled:opacity-50`}
+                    >
+                      {actionLoading === orderId ? '...' : action.label}
+                    </button>
+                  ))
+                )}
+
+                {/* Address */}
+                {order.encrypted_address && (
+                  decryptedAddresses[orderId] ? (
+                    <span className="text-xs font-mono bg-gray-100 px-2 py-1 rounded text-gray-700 max-w-[200px] truncate">
+                      {decryptedAddresses[orderId]}
+                    </span>
+                  ) : (
+                    <button
+                      onClick={() => decryptAddress(orderId)}
+                      disabled={loadingAddresses[orderId]}
+                      className="px-3 py-1.5 rounded-md text-xs font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 disabled:opacity-50"
+                    >
+                      {loadingAddresses[orderId] ? 'Decrypting...' : 'View Address'}
+                    </button>
+                  )
+                )}
+
+                {/* View detail */}
+                <button
+                  onClick={() => router.push(`/admin/orders/${orderId}`)}
+                  className="px-3 py-1.5 rounded-md text-xs font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 ml-auto"
+                >
+                  View Details
+                </button>
+              </div>
+
+              {/* Expanded input for actions requiring input */}
+              {isExpanded && expandedAction && (
+                <div className="mt-3 p-3 bg-gray-50 rounded-lg border border-gray-200">
+                  <div className="text-sm font-medium text-gray-700 mb-2">
+                    {inputLabels[expandedAction.action.requiresInput]?.title || 'Input Required'}
+                  </div>
+                  <input
+                    type="text"
+                    value={actionInput}
+                    onChange={(e) => setActionInput(e.target.value)}
+                    placeholder={inputLabels[expandedAction.action.requiresInput]?.placeholder || ''}
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500 mb-2"
+                    autoFocus
+                  />
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => {
+                        const key = expandedAction.action.requiresInput;
+                        const extra: Record<string, string> = {};
+                        if (key && actionInput) extra[key] = actionInput;
+                        handleStatusChange(orderId, expandedAction.action.status, extra);
+                      }}
+                      disabled={actionLoading === orderId || (expandedAction.action.requiresInput !== 'tracking_info' && !actionInput)}
+                      className={`px-3 py-1.5 rounded-md text-xs font-medium ${expandedAction.action.color} disabled:opacity-50`}
+                    >
+                      {actionLoading === orderId ? 'Processing...' : `Confirm ${expandedAction.action.label}`}
+                    </button>
+                    <button
+                      onClick={() => { setExpandedAction(null); setActionInput(''); }}
+                      className="px-3 py-1.5 rounded-md text-xs font-medium bg-gray-200 text-gray-700 hover:bg-gray-300"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
 
-      {orders.length === 0 && !loading && (
-        <div className="text-center py-8 text-gray-500">No orders found.</div>
+      {filtered.length === 0 && !loading && (
+        <div className="text-center py-12 text-gray-500 bg-white rounded-lg shadow-sm border border-gray-100">
+          {activeFilter === 'all' ? 'No orders yet.' : `No ${activeFilter} orders.`}
+        </div>
       )}
     </div>
   );
 }
-
