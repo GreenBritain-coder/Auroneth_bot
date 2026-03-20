@@ -23,7 +23,7 @@ interface OrderDetail {
   currency?: string;
   timestamp: string;
   encrypted_address?: string;
-  items?: Array<{ product_id: string; quantity: number; price: number }>;
+  items?: Array<{ product_id: string; product_name?: string; quantity: number; price: number }>;
   delivery_method?: string;
   shipping_cost?: number;
   tracking_info?: string;
@@ -391,7 +391,7 @@ export default function OrderDetailPage() {
             <tbody className="divide-y divide-gray-100">
               {order.items.map((item, idx) => (
                 <tr key={idx}>
-                  <td className="py-2 text-sm font-mono">{item.product_id?.substring(0, 12)}...</td>
+                  <td className="py-2 text-sm">{item.product_name || <span className="font-mono text-gray-400">{item.product_id?.substring(0, 12)}...</span>}</td>
                   <td className="py-2 text-sm">{item.quantity}</td>
                   <td className="py-2 text-sm">{item.price}</td>
                 </tr>

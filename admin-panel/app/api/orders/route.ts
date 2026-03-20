@@ -87,6 +87,25 @@ export async function GET(request: NextRequest) {
       console.log('Sample order _id:', orders[0]._id, typeof orders[0]._id);
     }
     
+    // Fetch product names for all unique product IDs in order items
+    const { Product } = await import('../../../lib/models');
+    const allProductIds = new Set<string>();
+    orders.forEach(o => {
+      if (o.productId) allProductIds.add(String(o.productId));
+      if (o.items && Array.isArray(o.items)) {
+        o.items.forEach((item: any) => {
+          if (item.product_id) allProductIds.add(String(item.product_id));
+        });
+      }
+    });
+    const products = await Product.find({
+      _id: { $in: [...allProductIds] }
+    }).lean();
+    const productNamesMap: Record<string, string> = {};
+    products.forEach((p: any) => {
+      productNamesMap[String(p._id)] = p.name || 'Unknown Product';
+    });
+
     // Convert orders to plain objects and ensure _id is a string
     // Using .lean() returns plain JavaScript objects, not Mongoose documents
     const ordersData = orders.map(order => {
@@ -132,6 +151,11 @@ export async function GET(request: NextRequest) {
           botId: botId,
           botName: botNamesMap[botId] || 'Unknown Bot',
           productId: order.productId != null ? String(order.productId) : order.productId,
+          productName: order.productId ? productNamesMap[String(order.productId)] : undefined,
+          items: order.items?.map((item: any) => ({
+            ...item,
+            product_name: item.product_id ? productNamesMap[String(item.product_id)] : undefined,
+          })),
           // Include encrypted_address if it exists (for UI to show "View Address" button)
           // Only include if it's actually set (not empty string)
           encrypted_address: order.encrypted_address && order.encrypted_address.trim() ? order.encrypted_address : undefined,
