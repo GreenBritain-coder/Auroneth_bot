@@ -589,15 +589,25 @@ async def handle_category(callback: CallbackQuery):
                     reply_markup=list_keyboard
                 )
             return
+        back_keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="⬅️ Back to Categories", callback_data="shop")],
+            [InlineKeyboardButton(text="⬅️ Back to Menu", callback_data="menu")]
+        ])
         try:
-            await callback.message.edit_text("📁 No subcategories or products available in this category.")
+            await callback.message.edit_text(
+                "📁 No subcategories or products available in this category.",
+                reply_markup=back_keyboard
+            )
         except Exception as e:
             print(f"Edit failed: {e}")
             try:
                 await callback.message.delete()
             except:
                 pass
-            await callback.message.answer("📁 No subcategories or products available in this category.")
+            await callback.message.answer(
+                "📁 No subcategories or products available in this category.",
+                reply_markup=back_keyboard
+            )
         return
     
     # Create subcategory buttons
