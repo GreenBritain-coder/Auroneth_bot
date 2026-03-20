@@ -280,8 +280,9 @@ def calculate_increment_amount(product: dict, variation=None) -> float:
         return 1.0
 
 
-async def show_product_quantity_interface(callback: CallbackQuery, product: dict, variation_index: Optional[int] = None, current_quantity: float = None):
-    """Display product with advanced quantity selection interface"""
+async def show_product_quantity_interface(callback: CallbackQuery, product: dict, variation_index: Optional[int] = None, current_quantity: float = None, status_message: str = None):
+    """Display product with advanced quantity selection interface.
+    status_message: optional text shown at the top (e.g. '✅ Added 1.00g to cart!')"""
     bot_config = await get_bot_config()
     if not bot_config:
         await callback.message.answer("❌ Bot configuration not found.")
@@ -341,7 +342,10 @@ async def show_product_quantity_interface(callback: CallbackQuery, product: dict
         qty_display = f"{current_quantity:.2f}"
     
     # Build product text
-    product_text = f"🛍️ *{product['name']}*"
+    product_text = ""
+    if status_message:
+        product_text += f"{status_message}\n\n"
+    product_text += f"🛍️ *{product['name']}*"
     if variation:
         product_text += f" - {variation['name']}"
     product_text += f"\n\n{product.get('description', '')}\n\n"
@@ -1131,23 +1135,18 @@ async def handle_add_to_cart_qty(callback: CallbackQuery):
         }
     )
     
-    # Send confirmation with button to view cart
+    # Build confirmation message
     unit_display = f"{int(quantity) if quantity == int(quantity) else quantity:.2f} {unit}" if unit == "pcs" else f"{quantity:.2f} {unit}"
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(text="🛒 View Cart", callback_data="view_cart"),
-        InlineKeyboardButton(text="🛍️ Continue Shopping", callback_data="shop")
-    ]])
-    
     product_name = product['name']
     if variation_index is not None:
         variations = product.get("variations", [])
         if variation_index < len(variations):
             product_name += f" - {variations[variation_index]['name']}"
-    
-    await callback.message.answer(
-        f"✅ Added {unit_display} {product_name} to cart!",
-        reply_markup=keyboard
-    )
+
+    added_msg = f"✅ Added {unit_display} {product_name} to cart!"
+
+    # Re-render the product view in-place with confirmation and updated cart total
+    await show_product_quantity_interface(callback, product, variation_index=variation_index, current_quantity=quantity, status_message=added_msg)
 
 
 @router.callback_query(F.data.startswith("wishlist_add:"))
