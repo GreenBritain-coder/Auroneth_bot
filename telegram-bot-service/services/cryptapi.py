@@ -511,9 +511,10 @@ def create_invoice(amount: float, currency: str, order_id: str, buyer_email: str
             confirmations_required = os.getenv("CRYPTAPI_BTC_CONFIRMATIONS", "1")
             pending_mode = "1" if confirmations_required == "0" else "0"  # pending=1 means accept 0 confirmations
         elif currency.upper() == "LTC":
-            # Litecoin: 1 confirmation = ~2.5 minutes, fast enough
+            # Litecoin: 0 confirmations = instant detection from mempool
+            # pending=1 tells CryptAPI to callback as soon as TX is seen (before confirmation)
             confirmations_required = "1"
-            pending_mode = "0"  # Only confirmed payments
+            pending_mode = "1"  # Accept pending (0-conf) for faster response
         else:
             # Other currencies: use 1 confirmation by default
             confirmations_required = "1"
