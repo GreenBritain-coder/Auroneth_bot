@@ -2,13 +2,16 @@
 Shop navigation handlers: Categories → Subcategories → Products → Variations → Cart
 """
 from aiogram import Router, F
-from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton, BufferedInputFile
+from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton, BufferedInputFile, InputMediaPhoto
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from database.connection import get_database
 from utils.bot_config import get_bot_config
 from utils.callback_utils import safe_answer_callback
 from typing import Optional
+
+# Fallback banner when no bot profile picture is available
+FALLBACK_BANNER_URL = "https://images.auroneth.info/banner.png"
 
 router = Router()
 
@@ -21,32 +24,72 @@ class ReviewCommentStates(StatesGroup):
     waiting_for_comment = State()
 
 
-async def safe_edit_or_send(callback: CallbackQuery, text: str, reply_markup=None, parse_mode=None):
+async def get_banner_url() -> str:
+    """Get the bot's profile picture URL for use as a navigation banner."""
+    bot_config = await get_bot_config()
+    if bot_config and bot_config.get("profile_picture_url"):
+        url = bot_config["profile_picture_url"]
+        # Only use regular URLs, not base64 data URLs (too large for repeated use)
+        if url.startswith("http"):
+            return url
+    return FALLBACK_BANNER_URL
+
+
+async def safe_edit_or_send(callback: CallbackQuery, text: str, reply_markup=None, parse_mode=None, photo_url: str = None):
     """
-    Edit the current message to show text content.
-    If the current message is a photo (edit_text fails), delete it and send a new text message.
-    This prevents duplicate messages when navigating back from photo views.
+    Navigate within the same message using photo messages throughout.
+    Uses edit_media to swap between different photos (product images, banners)
+    and edit_caption for the text, keeping everything in one inline message.
+
+    If photo_url is provided, uses that image. Otherwise uses the bot banner.
+    For the initial message (fake callback), sends a new photo message.
     """
     is_fake = getattr(callback, 'id', None) is None
-    kwargs = {}
-    if reply_markup:
-        kwargs['reply_markup'] = reply_markup
-    if parse_mode:
-        kwargs['parse_mode'] = parse_mode
+
+    # Determine image to use
+    if not photo_url:
+        photo_url = await get_banner_url()
 
     if is_fake:
-        await callback.message.answer(text, **kwargs)
+        # Initial entry from menu - send a new photo message
+        try:
+            await callback.message.answer_photo(
+                photo=photo_url,
+                caption=text,
+                parse_mode=parse_mode,
+                reply_markup=reply_markup
+            )
+        except Exception:
+            # If photo fails, fall back to text
+            await callback.message.answer(text, parse_mode=parse_mode, reply_markup=reply_markup)
         return
 
+    # Real callback - try to edit the existing message in place
     try:
-        await callback.message.edit_text(text, **kwargs)
+        # Try edit_media to swap image + caption in one call
+        media = InputMediaPhoto(media=photo_url, caption=text, parse_mode=parse_mode)
+        await callback.message.edit_media(media=media, reply_markup=reply_markup)
     except Exception:
-        # edit_text fails on photo messages - delete and send new
+        # If edit_media fails, try edit_caption (same photo, different text)
         try:
-            await callback.message.delete()
+            await callback.message.edit_caption(
+                caption=text, parse_mode=parse_mode, reply_markup=reply_markup
+            )
         except Exception:
-            pass
-        await callback.message.answer(text, **kwargs)
+            # Last resort: delete and send new photo message
+            try:
+                await callback.message.delete()
+            except Exception:
+                pass
+            try:
+                await callback.message.answer_photo(
+                    photo=photo_url,
+                    caption=text,
+                    parse_mode=parse_mode,
+                    reply_markup=reply_markup
+                )
+            except Exception:
+                await callback.message.answer(text, parse_mode=parse_mode, reply_markup=reply_markup)
 
 
 async def prepare_image_for_telegram(image_url: str) -> Optional[BufferedInputFile]:
@@ -371,50 +414,30 @@ async def show_product_quantity_interface(callback: CallbackQuery, product: dict
     
     keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
     
-    # Send or edit message
-    is_fake = getattr(callback, 'id', None) is None
+    # Send or edit message - use product image or banner
     image_url = product.get("image_url")
-
-    try:
-        # Check if image is base64 and prepare it
-        image_file = await prepare_image_for_telegram(image_url) if image_url else None
-        has_image = image_file or (image_url and image_url.strip())
-
-        if is_fake:
-            # For fake callbacks (from menu buttons), always send new message
-            if has_image:
-                photo = image_file if image_file else image_url
+    # For base64 images, prepare them but prefer URL-based images for edit_media
+    if image_url and image_url.startswith("data:"):
+        image_file = await prepare_image_for_telegram(image_url)
+        if image_file:
+            # Base64 images can't be used with edit_media URL - send as new if needed
+            is_fake = getattr(callback, 'id', None) is None
+            if is_fake:
                 await callback.message.answer_photo(
-                    photo=photo, caption=product_text,
+                    photo=image_file, caption=product_text,
                     parse_mode="Markdown", reply_markup=keyboard
                 )
             else:
-                await callback.message.answer(product_text, parse_mode="Markdown", reply_markup=keyboard)
-        else:
-            if has_image:
-                # Try to edit caption (works if current message is a photo)
                 try:
-                    await callback.message.edit_caption(
-                        caption=product_text, parse_mode="Markdown", reply_markup=keyboard
-                    )
+                    await callback.message.delete()
                 except Exception:
-                    # Current message is text, not photo - delete and send photo
-                    try:
-                        await callback.message.delete()
-                    except Exception:
-                        pass
-                    photo = image_file if image_file else image_url
-                    await callback.message.answer_photo(
-                        photo=photo, caption=product_text,
-                        parse_mode="Markdown", reply_markup=keyboard
-                    )
-            else:
-                await safe_edit_or_send(callback, product_text, parse_mode="Markdown", reply_markup=keyboard)
-    except Exception as e:
-        print(f"Error displaying product: {e}")
-        import traceback
-        traceback.print_exc()
-        await callback.message.answer(product_text, parse_mode="Markdown", reply_markup=keyboard)
+                    pass
+                await callback.message.answer_photo(
+                    photo=image_file, caption=product_text,
+                    parse_mode="Markdown", reply_markup=keyboard
+                )
+            return
+    await safe_edit_or_send(callback, product_text, parse_mode="Markdown", reply_markup=keyboard, photo_url=image_url if image_url and image_url.startswith("http") else None)
 
 
 @router.callback_query(F.data == "shop")
@@ -782,24 +805,7 @@ async def handle_product(callback: CallbackQuery):
         product_text += "Select an option:"
 
         image_url = product.get('image_url', '')
-        try:
-            if image_url:
-                # Delete old message (may be text or photo) and send photo
-                try:
-                    await callback.message.delete()
-                except Exception:
-                    pass
-                await callback.message.answer_photo(
-                    photo=image_url,
-                    caption=product_text,
-                    parse_mode="Markdown",
-                    reply_markup=keyboard
-                )
-            else:
-                await safe_edit_or_send(callback, product_text, parse_mode="Markdown", reply_markup=keyboard)
-        except Exception as e:
-            print(f"[Product] Image send failed: {e}, falling back to text")
-            await safe_edit_or_send(callback, product_text, parse_mode="Markdown", reply_markup=keyboard)
+        await safe_edit_or_send(callback, product_text, parse_mode="Markdown", reply_markup=keyboard, photo_url=image_url or None)
 
 
 @router.callback_query(F.data.startswith("variation:"))

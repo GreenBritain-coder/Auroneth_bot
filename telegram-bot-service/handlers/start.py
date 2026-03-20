@@ -460,22 +460,30 @@ async def handle_menu_callback(callback: CallbackQuery, state: FSMContext):
     # Edit the message to show menu directly
     if inline_keyboard_buttons:
         inline_keyboard = InlineKeyboardMarkup(inline_keyboard=inline_keyboard_buttons)
+        full_text = menu_text + "\n\n👇 Choose an option:"
         try:
             await callback.message.edit_text(
-                menu_text + "\n\n👇 Choose an option:",
+                full_text,
                 parse_mode="Markdown",
                 reply_markup=inline_keyboard
             )
         except Exception as e:
-            # If edit fails (e.g., message too different), send new message
-            await callback.message.answer(menu_text, parse_mode="Markdown", reply_markup=ReplyKeyboardRemove())
-            await callback.message.answer("👇 Choose an option:", reply_markup=inline_keyboard)
+            # edit_text fails on photo messages - delete and send new text
+            try:
+                await callback.message.delete()
+            except Exception:
+                pass
+            await callback.message.answer(full_text, parse_mode="Markdown", reply_markup=inline_keyboard)
     else:
         # No active buttons configured, just show commands
         try:
             await callback.message.edit_text(menu_text, parse_mode="Markdown")
         except:
-            await callback.message.answer(menu_text, parse_mode="Markdown", reply_markup=ReplyKeyboardRemove())
+            try:
+                await callback.message.delete()
+            except Exception:
+                pass
+            await callback.message.answer(menu_text, parse_mode="Markdown")
 
 
 @router.callback_query(F.data == "about")
