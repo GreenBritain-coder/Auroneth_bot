@@ -55,6 +55,19 @@ async def handle_menu_inline_button(callback: CallbackQuery, state: FSMContext):
     action = callback.data.lower()
     print(f"[MENU INLINE] Action extracted: '{action}'")
     messages = bot_config.get("messages", {})
+
+    # Look up custom_buttons for this action's message (takes priority over messages dict)
+    custom_buttons = bot_config.get("custom_buttons", [])
+    custom_button_message = ""
+    if custom_buttons and isinstance(custom_buttons, list):
+        import re as _re
+        for cb in custom_buttons:
+            if not cb.get("enabled", True):
+                continue
+            cb_key = _re.sub(r'\s+', '_', _re.sub(r'[^\w\s]', '', str(cb.get("label", ""))).lower().strip())
+            if cb_key == action:
+                custom_button_message = cb.get("message", "")
+                break
     
     # Get menu inline buttons to keep the same keyboard
     menu_inline_buttons = bot_config.get("menu_inline_buttons", [])
@@ -142,17 +155,17 @@ async def handle_menu_inline_button(callback: CallbackQuery, state: FSMContext):
                 await safe_answer_callback(callback, f"Error: {str(e)}", show_alert=True)
         return
     elif "help" in action:
-        response_text = custom_message.strip() if custom_message and custom_message.strip() else messages.get("help", "Help information will be displayed here.")
+        response_text = custom_button_message.strip() if custom_button_message and custom_button_message.strip() else (custom_message.strip() if custom_message and custom_message.strip() else messages.get("help", "Help information will be displayed here."))
     elif "user_guide" in action:
-        response_text = custom_message.strip() if custom_message and custom_message.strip() else messages.get("user_guide", "User guide information will be displayed here.")
+        response_text = custom_button_message.strip() if custom_button_message and custom_button_message.strip() else (custom_message.strip() if custom_message and custom_message.strip() else messages.get("user_guide", "User guide information will be displayed here."))
     elif "collections" in action:
-        response_text = custom_message.strip() if custom_message and custom_message.strip() else messages.get("collections", "Collections information will be displayed here.")
+        response_text = custom_button_message.strip() if custom_button_message and custom_button_message.strip() else (custom_message.strip() if custom_message and custom_message.strip() else messages.get("collections", "Collections information will be displayed here."))
     elif "feedback" in action:
-        response_text = custom_message.strip() if custom_message and custom_message.strip() else messages.get("feedback", "Feedback information will be displayed here.")
+        response_text = custom_button_message.strip() if custom_button_message and custom_button_message.strip() else (custom_message.strip() if custom_message and custom_message.strip() else messages.get("feedback", "Feedback information will be displayed here."))
     elif "refer" in action or "rewards" in action:
-        response_text = custom_message.strip() if custom_message and custom_message.strip() else messages.get("refer", "Refer & Rewards information will be displayed here.")
+        response_text = custom_button_message.strip() if custom_button_message and custom_button_message.strip() else (custom_message.strip() if custom_message and custom_message.strip() else messages.get("refer", "Refer & Rewards information will be displayed here."))
     elif "offers" in action:
-        response_text = custom_message.strip() if custom_message and custom_message.strip() else messages.get("offers", "Offers information will be displayed here.")
+        response_text = custom_button_message.strip() if custom_button_message and custom_button_message.strip() else (custom_message.strip() if custom_message and custom_message.strip() else messages.get("offers", "Offers information will be displayed here."))
     elif "support" in action or "chat" in action:
         # Open full contact interface (same as Contact button) - allows sending messages to vendor
         from handlers.contact import handle_contact_start
@@ -160,7 +173,7 @@ async def handle_menu_inline_button(callback: CallbackQuery, state: FSMContext):
         await handle_contact_start(callback.message, state, user_id=user_id)
         return
     elif "questions" in action or "terms" in action:
-        response_text = custom_message.strip() if custom_message and custom_message.strip() else messages.get("questions", "Questions and Answers (T&C) information will be displayed here.")
+        response_text = custom_button_message.strip() if custom_button_message and custom_button_message.strip() else (custom_message.strip() if custom_message and custom_message.strip() else messages.get("questions", "Questions and Answers (T&C) information will be displayed here."))
     elif action == "discounts" or action == "promo" or action == "promotions":
         # Build promotions/discounts message
         from database.connection import get_database
@@ -250,8 +263,13 @@ async def handle_menu_inline_button(callback: CallbackQuery, state: FSMContext):
         # No operation - just update menu
         response_text = "Choose an option from main menu:"
     else:
-        # Generic action - use custom message if found, otherwise default
-        response_text = custom_message.strip() if custom_message and custom_message.strip() else f"Selected: {action}"
+        # Generic action - use custom_button_message first, then messages dict, then default
+        if custom_button_message and custom_button_message.strip():
+            response_text = custom_button_message.strip()
+        elif custom_message and custom_message.strip():
+            response_text = custom_message.strip()
+        else:
+            response_text = f"Selected: {action}"
     
     # Update the menu message with new content + Back to Menu (stay in same message)
     back_to_menu_keyboard = InlineKeyboardMarkup(inline_keyboard=[

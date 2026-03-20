@@ -32,6 +32,14 @@ export interface IBot extends Document {
   payment_methods?: string[]; // Supported payment methods (e.g., ["BTC", "LTC"])
   cut_off_time?: string; // Cut-off time in HH:MM format (e.g., "14:30")
   shipping_methods?: Array<{ code: string; name: string; cost: number }>; // Delivery methods with costs (STD, EXP, NXT)
+  custom_buttons?: Array<{
+    label: string;        // Button text shown in Telegram
+    message: string;      // Text displayed when clicked
+    type: 'text' | 'url'; // Whether it shows a message or opens a link
+    url?: string;          // URL if type is 'url'
+    order: number;         // Display order
+    enabled: boolean;      // Toggle visibility
+  }>;
 }
 
 const BotSchema = new Schema<IBot>({
@@ -63,6 +71,7 @@ const BotSchema = new Schema<IBot>({
   webhook_url: { type: String }, // Webhook URL for payment callbacks
   payment_methods: { type: [String], default: ['BTC', 'LTC'] }, // Supported payment methods (BTC/LTC only)
   cut_off_time: { type: String }, // Cut-off time in HH:MM format (e.g., "14:30")
+  custom_buttons: { type: [Schema.Types.Mixed], default: [] }, // Custom menu buttons with label, message, type, url, order, enabled
 }, { strict: false }); // Allow additional fields beyond schema
 
 // Delete existing model if it exists to force schema refresh
@@ -181,6 +190,15 @@ const CartSchema = new Schema<ICart>({
 
 export const Cart = mongoose.models.Cart || mongoose.model<ICart>('Cart', CartSchema);
 
+// Order Model - Status History Entry
+export interface IOrderStatusHistory {
+  from_status: string | null;
+  to_status: string;
+  changed_by: string; // "system" | "vendor" | "buyer:{userId}"
+  changed_at: Date;
+  note?: string;
+}
+
 // Order Model
 export interface IOrder extends Document {
   _id: string;
@@ -188,35 +206,86 @@ export interface IOrder extends Document {
   productId: string;
   userId: string;
   invoiceId?: string;
-  paymentStatus: 'pending' | 'paid' | 'failed';
+  paymentStatus: 'pending' | 'paid' | 'confirmed' | 'shipped' | 'delivered' | 'completed' | 'disputed' | 'expired' | 'cancelled' | 'refunded' | 'failed';
   amount: number;
   commission: number;
-  currency?: string; // Payment currency (BTC, LTC, etc.) - optional for backward compatibility
+  currency?: string;
   timestamp: Date;
-  encrypted_address?: string; // Encrypted shipping/delivery address
+  encrypted_address?: string;
   quantity?: number;
   variation_index?: number;
+  items?: Array<{ product_id: string; variation_index?: number; quantity: number; price: number }>;
+  delivery_method?: string;
+  shipping_cost?: number;
+
+  // Timestamp fields for each status
+  paid_at?: Date;
+  confirmed_at?: Date;
+  shipped_at?: Date;
+  delivered_at?: Date;
+  completed_at?: Date;
+  disputed_at?: Date;
+  expired_at?: Date;
+  cancelled_at?: Date;
+  refunded_at?: Date;
+
+  // Tracking / status metadata
+  tracking_info?: string;
+  cancelled_by?: string;
+  cancellation_reason?: string;
+  dispute_reason?: string;
+  refund_txid?: string;
+
+  // Status history log
+  status_history?: IOrderStatusHistory[];
 }
 
 const OrderSchema = new Schema<IOrder>({
-  _id: { type: String }, // Allow string IDs (UUIDs from Python bot)
+  _id: { type: String },
   botId: { type: String, required: true },
   productId: { type: String, required: true },
   userId: { type: String, required: true },
   invoiceId: { type: String },
-  paymentStatus: { type: String, enum: ['pending', 'paid', 'failed'], default: 'pending' },
+  paymentStatus: {
+    type: String,
+    enum: ['pending', 'paid', 'confirmed', 'shipped', 'delivered', 'completed', 'disputed', 'expired', 'cancelled', 'refunded', 'failed'],
+    default: 'pending',
+  },
   amount: { type: Number, required: true },
   commission: { type: Number, required: true },
-  currency: { type: String }, // Payment currency (BTC, LTC, etc.) - optional for backward compatibility
+  currency: { type: String },
   timestamp: { type: Date, default: Date.now },
-  encrypted_address: { type: String }, // Encrypted address field
+  encrypted_address: { type: String },
   quantity: { type: Number },
   variation_index: { type: Number },
+  items: { type: Schema.Types.Mixed },
+  delivery_method: { type: String },
+  shipping_cost: { type: Number },
+  paid_at: { type: Date },
+  confirmed_at: { type: Date },
+  shipped_at: { type: Date },
+  delivered_at: { type: Date },
+  completed_at: { type: Date },
+  disputed_at: { type: Date },
+  expired_at: { type: Date },
+  cancelled_at: { type: Date },
+  refunded_at: { type: Date },
+  tracking_info: { type: String },
+  cancelled_by: { type: String },
+  cancellation_reason: { type: String },
+  dispute_reason: { type: String },
+  refund_txid: { type: String },
+  status_history: { type: Schema.Types.Mixed, default: [] },
 }, {
-  _id: true, // Keep _id but allow custom string values
+  _id: true,
+  strict: false,
 });
 
-export const Order = mongoose.models.Order || mongoose.model<IOrder>('Order', OrderSchema);
+// Delete existing model to force schema refresh on hot reload
+if (mongoose.models.Order) {
+  delete mongoose.models.Order;
+}
+export const Order = mongoose.model<IOrder>('Order', OrderSchema);
 
 // Commission Model
 export interface ICommission extends Document {

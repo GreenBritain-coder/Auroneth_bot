@@ -44,6 +44,14 @@ export default function EditBotPage() {
     payout_ltc_address: '', // Vendor's LTC payout address
     payout_btc_address: '', // Vendor's BTC payout address
     shipping_methods: { STD: 0, EXP: 5, NXT: 10 } as Record<string, number>, // Delivery method costs (Standard, Express, Next Day)
+    custom_buttons: [] as Array<{
+      label: string;
+      message: string;
+      type: 'text' | 'url';
+      url?: string;
+      order: number;
+      enabled: boolean;
+    }>,
   });
   const [updatingProfilePic, setUpdatingProfilePic] = useState(false);
   const [userRole, setUserRole] = useState<string | null>(null);
@@ -168,6 +176,28 @@ export default function EditBotPage() {
             }
             return autoButtons.length > 0 ? JSON.stringify(autoButtons, null, 2) : '';
           })(),
+          custom_buttons: (() => {
+            // Load custom_buttons if they exist, otherwise migrate from main_buttons
+            if (botData.custom_buttons && Array.isArray(botData.custom_buttons) && botData.custom_buttons.length > 0) {
+              return botData.custom_buttons.sort((a: any, b: any) => (a.order || 0) - (b.order || 0));
+            }
+            // Migrate from main_buttons for backward compatibility
+            const mainButtons = botData.main_buttons || [];
+            const mainButtonMessages = botData.messages || {};
+            return mainButtons
+              .filter((btn: string) => btn && btn.trim())
+              .map((btn: string, idx: number) => {
+                const dbKey = btn.replace(/[^\w\s]/g, '').toLowerCase().trim().replace(/\s+/g, '_');
+                return {
+                  label: btn.trim(),
+                  message: mainButtonMessages[dbKey] || '',
+                  type: 'text' as const,
+                  url: '',
+                  order: idx,
+                  enabled: true,
+                };
+              });
+          })(),
         });
       } else {
         setError('Failed to load bot');
@@ -230,10 +260,44 @@ export default function EditBotPage() {
     setSaving(true);
 
     try {
-      const main_buttons = formData.main_buttons
-        .split(',')
-        .map((b) => b.trim())
-        .filter((b) => b.length > 0);
+      // Generate main_buttons and menu_inline_buttons from custom_buttons for backward compatibility
+      const enabledButtons = formData.custom_buttons
+        .filter(btn => btn.enabled)
+        .sort((a, b) => a.order - b.order);
+
+      const main_buttons = enabledButtons.map(btn => btn.label);
+
+      // Auto-generate menu_inline_buttons from custom_buttons (2 per row)
+      const autoMenuInlineButtons: any[][] = [];
+      for (let i = 0; i < enabledButtons.length; i += 2) {
+        const row = [];
+        const btn1 = enabledButtons[i];
+        const action1 = btn1.label.replace(/[^\w\s]/g, '').toLowerCase().trim().replace(/\s+/g, '_');
+        if (btn1.type === 'url' && btn1.url) {
+          row.push({ text: btn1.label, action: action1, url: btn1.url });
+        } else {
+          row.push({ text: btn1.label, action: action1 });
+        }
+        if (i + 1 < enabledButtons.length) {
+          const btn2 = enabledButtons[i + 1];
+          const action2 = btn2.label.replace(/[^\w\s]/g, '').toLowerCase().trim().replace(/\s+/g, '_');
+          if (btn2.type === 'url' && btn2.url) {
+            row.push({ text: btn2.label, action: action2, url: btn2.url });
+          } else {
+            row.push({ text: btn2.label, action: action2 });
+          }
+        }
+        autoMenuInlineButtons.push(row);
+      }
+
+      // Build button messages from custom_buttons
+      const buttonMessages: Record<string, string> = {};
+      formData.custom_buttons.forEach(btn => {
+        const key = btn.label.replace(/[^\w\s]/g, '').toLowerCase().trim().replace(/\s+/g, '_');
+        if (btn.message) {
+          buttonMessages[key] = btn.message;
+        }
+      });
 
       const updateData: any = {
         name: formData.name,
@@ -243,35 +307,20 @@ export default function EditBotPage() {
         status: formData.status,
         public_listing: formData.public_listing,
         main_buttons,
+        custom_buttons: formData.custom_buttons,
         messages: {
           welcome: formData.welcome_message || 'Welcome!',
           thank_you: formData.thank_you_message || 'Thank you for your purchase!',
           support: formData.support_message || '',
           promotions: formData.promotions_message || '',
-          // Add messages for each main menu button
-          ...Object.fromEntries(
-            Object.entries(formData.main_button_messages).map(([btn, msg]) => {
-              // Replace all spaces with underscores, not just the first one
-              // Strip emojis and special chars, keep only alphanumeric and spaces
-              const key = btn.replace(/[^\w\s]/g, '').toLowerCase().trim().replace(/\s+/g, '_');
-              return [key, msg];
-            })
-          ),
+          // Add messages for each custom button
+          ...buttonMessages,
         },
         inline_action_messages: {
           info: formData.inline_action_info || '',
         },
         profile_picture_url: formData.profile_picture_url,
-        menu_inline_buttons: (() => {
-          try {
-            if (formData.menu_inline_buttons && formData.menu_inline_buttons.trim()) {
-              return JSON.parse(formData.menu_inline_buttons);
-            }
-          } catch (e) {
-            console.error('Error parsing menu_inline_buttons:', e);
-          }
-          return [];
-        })(),
+        menu_inline_buttons: autoMenuInlineButtons,
         cut_off_time: (() => {
           // Ensure time is saved in correct format (HH:MM)
           const time = formData.cut_off_time;
@@ -433,96 +482,201 @@ export default function EditBotPage() {
             </select>
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700">Main Menu Buttons</label>
-            <input
-              type="text"
-              className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
-              placeholder="Shop, Support, Promotions, Orders"
-              value={formData.main_buttons}
-              onChange={(e) => {
-                const buttons = e.target.value;
-                const buttonList = buttons.split(',').map(b => b.trim()).filter(b => b.length > 0);
-                
-                // Auto-generate menu_inline_buttons from main_buttons (2 buttons per row)
-                const autoButtons: any[][] = [];
-                for (let i = 0; i < buttonList.length; i += 2) {
-                  const row = [];
-                  const action1 = buttonList[i].replace(/[^\w\s]/g, '').toLowerCase().trim().replace(/\s+/g, '_');
-                  row.push({ text: buttonList[i], action: action1 });
-                  if (i + 1 < buttonList.length) {
-                    const action2 = buttonList[i + 1].replace(/[^\w\s]/g, '').toLowerCase().trim().replace(/\s+/g, '_');
-                    row.push({ text: buttonList[i + 1], action: action2 });
-                  }
-                  autoButtons.push(row);
-                }
-                
-                setFormData({ 
-                  ...formData, 
-                  main_buttons: buttons,
-                  menu_inline_buttons: autoButtons.length > 0 ? JSON.stringify(autoButtons, null, 2) : formData.menu_inline_buttons,
-                  // Initialize messages for new buttons
-                  main_button_messages: (() => {
-                    const existing = formData.main_button_messages || {};
-                    const newMessages: Record<string, string> = { ...existing };
-                    buttonList.forEach((btnName: string) => {
-                      if (btnName && !newMessages[btnName]) {
-                        newMessages[btnName] = '';
-                      }
-                    });
-                    return newMessages;
-                  })()
-                });
-              }}
-            />
-            <p className="mt-1 text-sm text-gray-500">Comma-separated list (e.g., Shop, Support, Promotions, Orders)</p>
-          </div>
+          <div className="border-t pt-4 mt-4">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="text-lg font-medium text-gray-900">Menu Buttons</h3>
+                <p className="text-sm text-gray-500">Configure custom buttons that appear in the bot menu. Hardcoded rows (Reviews, Orders/Wishlist/Cart, Contact/About) are always shown.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  const newButton = {
+                    label: '',
+                    message: '',
+                    type: 'text' as const,
+                    url: '',
+                    order: formData.custom_buttons.length,
+                    enabled: true,
+                  };
+                  setFormData({
+                    ...formData,
+                    custom_buttons: [...formData.custom_buttons, newButton],
+                  });
+                }}
+                className="bg-indigo-600 text-white px-3 py-1.5 rounded-md text-sm hover:bg-indigo-700"
+              >
+                + Add Button
+              </button>
+            </div>
 
-          {formData.main_buttons && formData.main_buttons.split(',').filter((b: string) => b.trim()).length > 0 && (
-            <div className="border-t pt-4 mt-4">
-              <label className="block text-sm font-medium text-gray-700 mb-3">Main Menu Button Messages</label>
-              <p className="mb-3 text-sm text-gray-500">
-                Customize the message/content shown when users click each main menu button. Leave empty to use default behavior.
-              </p>
-              <div className="space-y-4">
-                {formData.main_buttons.split(',').filter((b: string) => b.trim()).map((button: string) => {
-                  const buttonName = button.trim();
-                  // Strip emojis and special chars, keep only alphanumeric and spaces
-                  const buttonKey = buttonName.replace(/[^\w\s]/g, '').toLowerCase().trim().replace(/\s+/g, '_');
+            {formData.custom_buttons.length === 0 && (
+              <div className="text-center py-8 border-2 border-dashed border-gray-300 rounded-lg">
+                <p className="text-gray-500">No custom buttons configured. Click "Add Button" to create one.</p>
+              </div>
+            )}
+
+            <div className="space-y-3">
+              {formData.custom_buttons
+                .sort((a, b) => a.order - b.order)
+                .map((btn, index) => {
+                  const buttonKey = btn.label.replace(/[^\w\s]/g, '').toLowerCase().trim().replace(/\s+/g, '_');
                   const isSpecial = ['shop', 'orders'].includes(buttonKey);
-                  
+
                   return (
-                    <div key={buttonName} className="border border-gray-200 rounded-md p-3">
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        {buttonName}
-                        {isSpecial && (
-                          <span className="ml-2 text-xs text-gray-500">(Special button - message shows before default action)</span>
-                        )}
-                      </label>
-                      <textarea
-                        className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
-                        rows={2}
-                        placeholder={isSpecial 
-                          ? `Custom message for ${buttonName} button (shows before ${buttonKey === 'shop' ? 'shop' : 'orders'} content)`
-                          : `Message shown when users click "${buttonName}"`
-                        }
-                        value={formData.main_button_messages[buttonName] || ''}
-                        onChange={(e) => {
-                          setFormData({
-                            ...formData,
-                            main_button_messages: {
-                              ...formData.main_button_messages,
-                              [buttonName]: e.target.value
-                            }
-                          });
-                        }}
-                      />
+                    <div key={index} className={`border rounded-lg p-4 ${btn.enabled ? 'border-gray-300 bg-white' : 'border-gray-200 bg-gray-50 opacity-70'}`}>
+                      <div className="flex items-start gap-3">
+                        {/* Reorder + enable/disable controls */}
+                        <div className="flex flex-col items-center gap-1 pt-1">
+                          <button
+                            type="button"
+                            disabled={index === 0}
+                            onClick={() => {
+                              const buttons = [...formData.custom_buttons].sort((a, b) => a.order - b.order);
+                              if (index > 0) {
+                                const prevOrder = buttons[index - 1].order;
+                                buttons[index - 1].order = buttons[index].order;
+                                buttons[index].order = prevOrder;
+                                setFormData({ ...formData, custom_buttons: buttons });
+                              }
+                            }}
+                            className="text-gray-400 hover:text-gray-600 disabled:opacity-30 disabled:cursor-not-allowed"
+                            title="Move up"
+                          >
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M14.707 12.707a1 1 0 01-1.414 0L10 9.414l-3.293 3.293a1 1 0 01-1.414-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 010 1.414z" clipRule="evenodd" /></svg>
+                          </button>
+                          <span className="text-xs text-gray-400 font-mono">{index + 1}</span>
+                          <button
+                            type="button"
+                            disabled={index === formData.custom_buttons.length - 1}
+                            onClick={() => {
+                              const buttons = [...formData.custom_buttons].sort((a, b) => a.order - b.order);
+                              if (index < buttons.length - 1) {
+                                const nextOrder = buttons[index + 1].order;
+                                buttons[index + 1].order = buttons[index].order;
+                                buttons[index].order = nextOrder;
+                                setFormData({ ...formData, custom_buttons: buttons });
+                              }
+                            }}
+                            className="text-gray-400 hover:text-gray-600 disabled:opacity-30 disabled:cursor-not-allowed"
+                            title="Move down"
+                          >
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" /></svg>
+                          </button>
+                        </div>
+
+                        {/* Button fields */}
+                        <div className="flex-1 space-y-2">
+                          <div className="flex gap-3">
+                            <div className="flex-1">
+                              <label className="block text-xs font-medium text-gray-600 mb-1">Button Label</label>
+                              <input
+                                type="text"
+                                className="block w-full border border-gray-300 rounded-md px-3 py-1.5 text-sm"
+                                placeholder="e.g., Help, Promotions, User Guide"
+                                value={btn.label}
+                                onChange={(e) => {
+                                  const buttons = [...formData.custom_buttons];
+                                  const sorted = buttons.sort((a, b) => a.order - b.order);
+                                  sorted[index] = { ...sorted[index], label: e.target.value };
+                                  setFormData({ ...formData, custom_buttons: sorted });
+                                }}
+                              />
+                            </div>
+                            <div className="w-28">
+                              <label className="block text-xs font-medium text-gray-600 mb-1">Type</label>
+                              <select
+                                className="block w-full border border-gray-300 rounded-md px-2 py-1.5 text-sm"
+                                value={btn.type}
+                                onChange={(e) => {
+                                  const buttons = [...formData.custom_buttons];
+                                  const sorted = buttons.sort((a, b) => a.order - b.order);
+                                  sorted[index] = { ...sorted[index], type: e.target.value as 'text' | 'url' };
+                                  setFormData({ ...formData, custom_buttons: sorted });
+                                }}
+                              >
+                                <option value="text">Text</option>
+                                <option value="url">URL</option>
+                              </select>
+                            </div>
+                          </div>
+
+                          {btn.type === 'url' && (
+                            <div>
+                              <label className="block text-xs font-medium text-gray-600 mb-1">URL</label>
+                              <input
+                                type="url"
+                                className="block w-full border border-gray-300 rounded-md px-3 py-1.5 text-sm"
+                                placeholder="https://example.com"
+                                value={btn.url || ''}
+                                onChange={(e) => {
+                                  const buttons = [...formData.custom_buttons];
+                                  const sorted = buttons.sort((a, b) => a.order - b.order);
+                                  sorted[index] = { ...sorted[index], url: e.target.value };
+                                  setFormData({ ...formData, custom_buttons: sorted });
+                                }}
+                              />
+                            </div>
+                          )}
+
+                          <div>
+                            <label className="block text-xs font-medium text-gray-600 mb-1">
+                              Message {btn.type === 'url' ? '(shown alongside link)' : '(shown when clicked)'}
+                              {isSpecial && (
+                                <span className="ml-1 text-gray-400">(Special button - message shows before default action)</span>
+                              )}
+                            </label>
+                            <textarea
+                              className="block w-full border border-gray-300 rounded-md px-3 py-1.5 text-sm"
+                              rows={2}
+                              placeholder={`Message displayed when "${btn.label || 'this button'}" is clicked`}
+                              value={btn.message}
+                              onChange={(e) => {
+                                const buttons = [...formData.custom_buttons];
+                                const sorted = buttons.sort((a, b) => a.order - b.order);
+                                sorted[index] = { ...sorted[index], message: e.target.value };
+                                setFormData({ ...formData, custom_buttons: sorted });
+                              }}
+                            />
+                          </div>
+                        </div>
+
+                        {/* Enable toggle + delete */}
+                        <div className="flex flex-col items-center gap-2 pt-1">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const buttons = [...formData.custom_buttons].sort((a, b) => a.order - b.order);
+                              buttons[index] = { ...buttons[index], enabled: !buttons[index].enabled };
+                              setFormData({ ...formData, custom_buttons: buttons });
+                            }}
+                            className={`relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out ${btn.enabled ? 'bg-indigo-600' : 'bg-gray-300'}`}
+                            title={btn.enabled ? 'Enabled - click to disable' : 'Disabled - click to enable'}
+                          >
+                            <span className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${btn.enabled ? 'translate-x-4' : 'translate-x-0'}`} />
+                          </button>
+                          <span className="text-xs text-gray-500">{btn.enabled ? 'On' : 'Off'}</span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const buttons = [...formData.custom_buttons]
+                                .sort((a, b) => a.order - b.order)
+                                .filter((_, i) => i !== index)
+                                .map((b, i) => ({ ...b, order: i }));
+                              setFormData({ ...formData, custom_buttons: buttons });
+                            }}
+                            className="text-red-400 hover:text-red-600 mt-1"
+                            title="Delete button"
+                          >
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" /></svg>
+                          </button>
+                        </div>
+                      </div>
                     </div>
                   );
                 })}
-              </div>
             </div>
-          )}
+          </div>
 
           <div>
             <label className="block text-sm font-medium text-gray-700">Welcome Message</label>
@@ -635,24 +789,7 @@ export default function EditBotPage() {
             </>
           )}
 
-          <div className="border-t pt-4 mt-4">
-            <h3 className="text-lg font-medium text-gray-900 mb-4">Menu Inline Buttons</h3>
-            <p className="text-sm text-gray-500 mb-2">
-              Configure inline buttons that appear when users type /menu. Format: JSON array of button rows.
-              <br />
-              <span className="font-semibold text-indigo-600">Auto-generated from Main Menu Buttons above</span> - buttons are automatically created (2 per row) when you update Main Menu Buttons. You can customize the layout here.
-            </p>
-            <textarea
-              className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 font-mono text-sm"
-              rows={12}
-              placeholder={`Example:\n[\n  [\n    {"text": "👋 Help", "action": "help"},\n    {"text": "🤝 User Guide", "action": "user_guide"}\n  ],\n  [\n    {"text": "🎁 Collections", "action": "collections"}\n  ],\n  [\n    {"text": "⏳ Pending(0)", "action": "pending"},\n    {"text": "📦 History(3)", "action": "history"}\n  ]\n]`}
-              value={formData.menu_inline_buttons}
-              onChange={(e) => setFormData({ ...formData, menu_inline_buttons: e.target.value })}
-            />
-            <p className="mt-1 text-xs text-gray-500">
-              Each outer array is a row. Each button can have: "text" (required), "action" (callback_data), or "url" (for URL buttons).
-            </p>
-          </div>
+          {/* Menu inline buttons are now auto-generated from custom_buttons above */}
 
           <div>
             <label className="block text-sm font-medium text-gray-700">Profile Picture</label>

@@ -399,16 +399,12 @@ async def handle_menu_callback(callback: CallbackQuery, state: FSMContext):
             await callback.message.answer("❌ Bot configuration not found. Please contact administrator.")
         return
 
-    # Get main menu buttons - filter out empty strings
-    main_buttons = bot_config.get("main_buttons", [])
-    main_buttons = [btn for btn in main_buttons if btn and btn.strip()] if isinstance(main_buttons, list) else []
-    
     import re
-    
+
     # Build menu text
     menu_text = "📋 *Main Menu*"
-    
-    # Create inline keyboard - Reviews first, then main_buttons, Orders/Wishlist/Cart and Contact/About at bottom
+
+    # Create inline keyboard - Reviews first, then custom buttons, Orders/Wishlist/Cart and Contact/About at bottom
     inline_keyboard_buttons = []
     user_id = str(callback.from_user.id) if callback.from_user else ""
     bot_id = str(bot_config["_id"])
@@ -418,25 +414,55 @@ async def handle_menu_callback(callback: CallbackQuery, state: FSMContext):
     inline_keyboard_buttons.append([
         InlineKeyboardButton(text="⭐ Reviews", callback_data="view_all_reviews")
     ])
-    # Filter out Orders from main_buttons (we have it in bottom row with dynamic count)
-    main_buttons_filtered = [b for b in main_buttons if re.sub(r'[^\w\s]', '', str(b).lower()).strip() != "orders"]
-    if main_buttons_filtered and len(main_buttons_filtered) > 0:
-        for i in range(0, len(main_buttons_filtered), 2):
+    # Build custom buttons from custom_buttons field, falling back to main_buttons
+    custom_buttons = bot_config.get("custom_buttons", [])
+    if custom_buttons and isinstance(custom_buttons, list) and len(custom_buttons) > 0:
+        # Use custom_buttons - filter enabled, sort by order, skip "orders"
+        enabled_buttons = [
+            b for b in custom_buttons
+            if b.get("enabled", True) and re.sub(r'[^\w\s]', '', str(b.get("label", "")).lower()).strip() != "orders"
+        ]
+        enabled_buttons.sort(key=lambda b: b.get("order", 0))
+        for i in range(0, len(enabled_buttons), 2):
             button_row = []
-            button_text_clean = re.sub(r'[^\w\s]', '', main_buttons_filtered[i])
-            callback_data_1 = re.sub(r'\s+', '_', button_text_clean.lower().strip())
-            button_row.append(InlineKeyboardButton(
-                text=main_buttons_filtered[i], 
-                callback_data=callback_data_1
-            ))
-            if i + 1 < len(main_buttons_filtered):
-                button_text_clean_2 = re.sub(r'[^\w\s]', '', main_buttons_filtered[i + 1])
-                callback_data_2 = re.sub(r'\s+', '_', button_text_clean_2.lower().strip())
-                button_row.append(InlineKeyboardButton(
-                    text=main_buttons_filtered[i + 1], 
-                    callback_data=callback_data_2
-                ))
+            btn1 = enabled_buttons[i]
+            label1 = btn1.get("label", "")
+            if btn1.get("type") == "url" and btn1.get("url"):
+                button_row.append(InlineKeyboardButton(text=label1, url=btn1["url"]))
+            else:
+                action1 = re.sub(r'\s+', '_', re.sub(r'[^\w\s]', '', label1).lower().strip())
+                button_row.append(InlineKeyboardButton(text=label1, callback_data=action1))
+            if i + 1 < len(enabled_buttons):
+                btn2 = enabled_buttons[i + 1]
+                label2 = btn2.get("label", "")
+                if btn2.get("type") == "url" and btn2.get("url"):
+                    button_row.append(InlineKeyboardButton(text=label2, url=btn2["url"]))
+                else:
+                    action2 = re.sub(r'\s+', '_', re.sub(r'[^\w\s]', '', label2).lower().strip())
+                    button_row.append(InlineKeyboardButton(text=label2, callback_data=action2))
             inline_keyboard_buttons.append(button_row)
+    else:
+        # Fallback to main_buttons for backward compatibility
+        main_buttons = bot_config.get("main_buttons", [])
+        main_buttons = [btn for btn in main_buttons if btn and btn.strip()] if isinstance(main_buttons, list) else []
+        main_buttons_filtered = [b for b in main_buttons if re.sub(r'[^\w\s]', '', str(b).lower()).strip() != "orders"]
+        if main_buttons_filtered and len(main_buttons_filtered) > 0:
+            for i in range(0, len(main_buttons_filtered), 2):
+                button_row = []
+                button_text_clean = re.sub(r'[^\w\s]', '', main_buttons_filtered[i])
+                callback_data_1 = re.sub(r'\s+', '_', button_text_clean.lower().strip())
+                button_row.append(InlineKeyboardButton(
+                    text=main_buttons_filtered[i],
+                    callback_data=callback_data_1
+                ))
+                if i + 1 < len(main_buttons_filtered):
+                    button_text_clean_2 = re.sub(r'[^\w\s]', '', main_buttons_filtered[i + 1])
+                    callback_data_2 = re.sub(r'\s+', '_', button_text_clean_2.lower().strip())
+                    button_row.append(InlineKeyboardButton(
+                        text=main_buttons_filtered[i + 1],
+                        callback_data=callback_data_2
+                    ))
+                inline_keyboard_buttons.append(button_row)
     # Bottom rows: Orders | Wishlist | Cart, then Contact | About
     inline_keyboard_buttons.append([
         InlineKeyboardButton(text=f"📦 Orders ({order_count})", callback_data="orders"),
@@ -455,7 +481,7 @@ async def handle_menu_callback(callback: CallbackQuery, state: FSMContext):
             InlineKeyboardButton(text="💬 Contact", callback_data="contact"),
             InlineKeyboardButton(text="ℹ️ About", callback_data="about"),
         ])
-    
+
     # Edit the message to show menu directly
     if inline_keyboard_buttons:
         inline_keyboard = InlineKeyboardMarkup(inline_keyboard=inline_keyboard_buttons)
@@ -565,16 +591,12 @@ async def cmd_menu(message: Message):
         await message.answer("❌ Bot configuration not found. Please contact administrator.", reply_markup=ReplyKeyboardRemove())
         return
     
-    # Get main menu buttons - filter out empty strings
-    main_buttons = bot_config.get("main_buttons", [])
-    main_buttons = [btn for btn in main_buttons if btn and btn.strip()] if isinstance(main_buttons, list) else []
-    
     import re
-    
+
     # Build menu text
     menu_text = "📋 *Main Menu*"
-    
-    # Create inline keyboard - Reviews first, then main_buttons, Orders/Wishlist/Cart and Contact/About at bottom
+
+    # Create inline keyboard - Reviews first, then custom buttons, Orders/Wishlist/Cart and Contact/About at bottom
     inline_keyboard_buttons = []
     user_id = str(message.from_user.id) if message.from_user else ""
     bot_id = str(bot_config["_id"])
@@ -584,25 +606,55 @@ async def cmd_menu(message: Message):
     inline_keyboard_buttons.append([
         InlineKeyboardButton(text="⭐ Reviews", callback_data="view_all_reviews")
     ])
-    # Filter out Orders from main_buttons (we have it in bottom row with dynamic count)
-    main_buttons_filtered = [b for b in main_buttons if re.sub(r'[^\w\s]', '', str(b).lower()).strip() != "orders"]
-    if main_buttons_filtered and len(main_buttons_filtered) > 0:
-        for i in range(0, len(main_buttons_filtered), 2):
+    # Build custom buttons from custom_buttons field, falling back to main_buttons
+    custom_buttons = bot_config.get("custom_buttons", [])
+    if custom_buttons and isinstance(custom_buttons, list) and len(custom_buttons) > 0:
+        # Use custom_buttons - filter enabled, sort by order, skip "orders"
+        enabled_buttons = [
+            b for b in custom_buttons
+            if b.get("enabled", True) and re.sub(r'[^\w\s]', '', str(b.get("label", "")).lower()).strip() != "orders"
+        ]
+        enabled_buttons.sort(key=lambda b: b.get("order", 0))
+        for i in range(0, len(enabled_buttons), 2):
             button_row = []
-            button_text_clean = re.sub(r'[^\w\s]', '', main_buttons_filtered[i])
-            callback_data_1 = re.sub(r'\s+', '_', button_text_clean.lower().strip())
-            button_row.append(InlineKeyboardButton(
-                text=main_buttons_filtered[i], 
-                callback_data=callback_data_1
-            ))
-            if i + 1 < len(main_buttons_filtered):
-                button_text_clean_2 = re.sub(r'[^\w\s]', '', main_buttons_filtered[i + 1])
-                callback_data_2 = re.sub(r'\s+', '_', button_text_clean_2.lower().strip())
-                button_row.append(InlineKeyboardButton(
-                    text=main_buttons_filtered[i + 1], 
-                    callback_data=callback_data_2
-                ))
+            btn1 = enabled_buttons[i]
+            label1 = btn1.get("label", "")
+            if btn1.get("type") == "url" and btn1.get("url"):
+                button_row.append(InlineKeyboardButton(text=label1, url=btn1["url"]))
+            else:
+                action1 = re.sub(r'\s+', '_', re.sub(r'[^\w\s]', '', label1).lower().strip())
+                button_row.append(InlineKeyboardButton(text=label1, callback_data=action1))
+            if i + 1 < len(enabled_buttons):
+                btn2 = enabled_buttons[i + 1]
+                label2 = btn2.get("label", "")
+                if btn2.get("type") == "url" and btn2.get("url"):
+                    button_row.append(InlineKeyboardButton(text=label2, url=btn2["url"]))
+                else:
+                    action2 = re.sub(r'\s+', '_', re.sub(r'[^\w\s]', '', label2).lower().strip())
+                    button_row.append(InlineKeyboardButton(text=label2, callback_data=action2))
             inline_keyboard_buttons.append(button_row)
+    else:
+        # Fallback to main_buttons for backward compatibility
+        main_buttons = bot_config.get("main_buttons", [])
+        main_buttons = [btn for btn in main_buttons if btn and btn.strip()] if isinstance(main_buttons, list) else []
+        main_buttons_filtered = [b for b in main_buttons if re.sub(r'[^\w\s]', '', str(b).lower()).strip() != "orders"]
+        if main_buttons_filtered and len(main_buttons_filtered) > 0:
+            for i in range(0, len(main_buttons_filtered), 2):
+                button_row = []
+                button_text_clean = re.sub(r'[^\w\s]', '', main_buttons_filtered[i])
+                callback_data_1 = re.sub(r'\s+', '_', button_text_clean.lower().strip())
+                button_row.append(InlineKeyboardButton(
+                    text=main_buttons_filtered[i],
+                    callback_data=callback_data_1
+                ))
+                if i + 1 < len(main_buttons_filtered):
+                    button_text_clean_2 = re.sub(r'[^\w\s]', '', main_buttons_filtered[i + 1])
+                    callback_data_2 = re.sub(r'\s+', '_', button_text_clean_2.lower().strip())
+                    button_row.append(InlineKeyboardButton(
+                        text=main_buttons_filtered[i + 1],
+                        callback_data=callback_data_2
+                    ))
+                inline_keyboard_buttons.append(button_row)
     # Bottom rows: Orders | Wishlist | Cart, then Contact | About
     inline_keyboard_buttons.append([
         InlineKeyboardButton(text=f"📦 Orders ({order_count})", callback_data="orders"),
@@ -621,7 +673,7 @@ async def cmd_menu(message: Message):
             InlineKeyboardButton(text="💬 Contact", callback_data="contact"),
             InlineKeyboardButton(text="ℹ️ About", callback_data="about"),
         ])
-    
+
     # Show inline menu
     if inline_keyboard_buttons:
         inline_keyboard = InlineKeyboardMarkup(inline_keyboard=inline_keyboard_buttons)

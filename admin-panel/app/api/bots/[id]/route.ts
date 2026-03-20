@@ -147,6 +147,8 @@ export async function PATCH(
         (existingBot as any)[key] = updateData[key];
       } else if (key === 'shipping_methods' && Array.isArray(updateData[key])) {
         (existingBot as any)[key] = updateData[key];
+      } else if (key === 'custom_buttons' && Array.isArray(updateData[key])) {
+        (existingBot as any)[key] = updateData[key];
       } else {
         (existingBot as any)[key] = updateData[key];
       }
@@ -174,6 +176,9 @@ export async function PATCH(
     }
     if ('shipping_methods' in updateData) {
       existingBot.markModified('shipping_methods');
+    }
+    if ('custom_buttons' in updateData) {
+      existingBot.markModified('custom_buttons');
     }
 
     // Save the bot to ensure all changes are persisted
