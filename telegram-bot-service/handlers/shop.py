@@ -3535,9 +3535,21 @@ async def show_payment_invoice(invoice_id: str, callback: CallbackQuery | Messag
     keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
     
     try:
-        await message.edit_text(invoice_text, parse_mode="Markdown", reply_markup=keyboard)
+        sent = await message.edit_text(invoice_text, parse_mode="Markdown", reply_markup=keyboard)
     except:
-        await message.answer(invoice_text, parse_mode="Markdown", reply_markup=keyboard)
+        sent = await message.answer(invoice_text, parse_mode="Markdown", reply_markup=keyboard)
+
+    # Save message_id and chat_id so webhook can edit this message when payment is confirmed
+    if sent and hasattr(sent, 'message_id'):
+        try:
+            chat_id = sent.chat.id if hasattr(sent, 'chat') else (message.chat.id if hasattr(message, 'chat') else None)
+            if chat_id:
+                await invoices_collection.update_one(
+                    {"invoice_id": invoice_id},
+                    {"$set": {"telegram_message_id": sent.message_id, "telegram_chat_id": chat_id}}
+                )
+        except Exception as e:
+            print(f"[Invoice] Could not save message_id for invoice {invoice_id}: {e}")
 
 
 async def show_cancelled_order_invoice(invoice_id: str, callback: CallbackQuery | Message):

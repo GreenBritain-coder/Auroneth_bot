@@ -412,20 +412,20 @@ async def handle_cryptapi_webhook(request: web.Request) -> web.Response:
                 await commissions_collection.insert_one(commission_record)
                 print(f"[CryptAPI Webhook] Commission record created for order {order_id}")
             
-            # Send confirmation message to user
+            # Send confirmation message and update invoice message
             try:
                 from aiogram import Bot
                 import os
                 from dotenv import load_dotenv
                 load_dotenv()
-                
+
                 from utils.bot_config import get_bot_config
                 bot_config = await get_bot_config()
-                
+
                 if not bot_config or str(bot_config.get("_id")) != str(order["botId"]):
                     bots_collection = db.bots
                     bot_config = await bots_collection.find_one({"_id": order["botId"]})
-                
+
                 if bot_config:
                     bot = Bot(token=bot_config["token"])
                     thank_you_message = bot_config.get("messages", {}).get("thank_you", "Thank you for your purchase!")
@@ -434,6 +434,35 @@ async def handle_cryptapi_webhook(request: web.Request) -> web.Response:
                         text=thank_you_message
                     )
                     print(f"[CryptAPI Webhook] Confirmation message sent to user {order['userId']}")
+
+                    # Try to update the invoice message in Telegram to show "Paid"
+                    try:
+                        invoice = await invoices_collection.find_one({"invoice_id": order_id})
+                        if not invoice:
+                            invoice = await invoices_collection.find_one({"payment_invoice_id": order_id})
+
+                        if invoice and invoice.get("telegram_message_id") and invoice.get("telegram_chat_id"):
+                            from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+                            display_id = invoice.get("invoice_id", order_id)
+                            paid_text = (
+                                f"✅ *Invoice {display_id}*\n\n"
+                                f"*Status: Paid*\n"
+                                f"💰 Amount: {invoice.get('payment_amount', '')} {invoice.get('payment_currency', '')}\n\n"
+                                f"Thank you for your payment!"
+                            )
+                            paid_keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                                [InlineKeyboardButton(text="⬅️ Back to Orders", callback_data=f"back_pay:{display_id}")]
+                            ])
+                            await bot.edit_message_text(
+                                text=paid_text,
+                                chat_id=invoice["telegram_chat_id"],
+                                message_id=invoice["telegram_message_id"],
+                                parse_mode="Markdown",
+                                reply_markup=paid_keyboard
+                            )
+                            print(f"[CryptAPI Webhook] Invoice message updated to Paid in Telegram")
+                    except Exception as e:
+                        print(f"[CryptAPI Webhook] Could not update invoice message: {e}")
             except Exception as e:
                 print(f"Error sending confirmation message: {e}")
             
