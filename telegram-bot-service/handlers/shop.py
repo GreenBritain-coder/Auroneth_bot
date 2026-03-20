@@ -13,6 +13,13 @@ from typing import Optional
 router = Router()
 
 
+def safe_split(data: str, index: int, default: str = "") -> str:
+    """Safely get a part from callback_data split by ':'.
+    Prevents IndexError if data is truncated or malformed."""
+    parts = data.split(":")
+    return parts[index] if len(parts) > index else default
+
+
 class QuantityInputStates(StatesGroup):
     waiting_for_quantity = State()
 
@@ -361,10 +368,12 @@ async def show_product_quantity_interface(callback: CallbackQuery, product: dict
     # Quantity adjustment row
     increment_str = f"{increment:.2f}" if increment != int(increment) else str(int(increment))
     var_idx_str = str(actual_variation_index) if actual_variation_index is not None else "none"
+    # Round quantity for callback_data to prevent exceeding Telegram's 64-byte limit
+    qty_str = f"{current_quantity:.2f}"
     keyboard_buttons.append([
-        InlineKeyboardButton(text=f"▲ +{increment_str}", callback_data=f"adjust_qty:{product_id}:{var_idx_str}:up:{current_quantity}"),
+        InlineKeyboardButton(text=f"▲ +{increment_str}", callback_data=f"adjust_qty:{product_id}:{var_idx_str}:up:{qty_str}"),
         InlineKeyboardButton(text=f"🛒 {cart_total_display}", callback_data="view_cart"),
-        InlineKeyboardButton(text=f"▼ -{increment_str}", callback_data=f"adjust_qty:{product_id}:{var_idx_str}:down:{current_quantity}")
+        InlineKeyboardButton(text=f"▼ -{increment_str}", callback_data=f"adjust_qty:{product_id}:{var_idx_str}:down:{qty_str}")
     ])
     
     # Enter quantity manually button
@@ -375,7 +384,7 @@ async def show_product_quantity_interface(callback: CallbackQuery, product: dict
     # Add to cart button
     price_display = f"{total_price:.2f}" if currency == "GBP" else f"{total_price:.8f}"
     keyboard_buttons.append([
-        InlineKeyboardButton(text=f"Add to Cart : {qty_display} {unit} [{currency_symbol}{price_display}]", callback_data=f"add_cart_qty:{product_id}:{current_quantity}:{var_idx_str}")
+        InlineKeyboardButton(text=f"Add to Cart : {qty_display} {unit} [{currency_symbol}{price_display}]", callback_data=f"add_cart_qty:{product_id}:{qty_str}:{var_idx_str}")
     ])
     
     # Wishlist and reviews row
@@ -736,12 +745,7 @@ async def handle_product(callback: CallbackQuery):
         product = await products_collection.find_one({"_id": product_id})
     
     # If still not found, try searching by string representation
-    if not product:
-        all_products = await products_collection.find({}).to_list(length=100)
-        for p in all_products:
-            if str(p.get('_id')) == product_id:
-                product = p
-                break
+    # ObjectId + string lookups above should be sufficient; no full-collection scan
     
     if not product:
         await callback.message.answer("❌ Product not found.")
@@ -830,12 +834,7 @@ async def handle_variation(callback: CallbackQuery):
         product = await products_collection.find_one({"_id": product_id})
     
     # If still not found, try searching by string representation
-    if not product:
-        all_products = await products_collection.find({}).to_list(length=100)
-        for p in all_products:
-            if str(p.get('_id')) == product_id:
-                product = p
-                break
+    # ObjectId + string lookups above should be sufficient; no full-collection scan
     
     if not product:
         await callback.message.answer("❌ Product not found.")
@@ -855,12 +854,14 @@ async def handle_quantity_adjust(callback: CallbackQuery):
     """Handle +/- quantity adjustment buttons"""
     await safe_answer_callback(callback)
     
-    parts = callback.data.split(":")
-    product_id = parts[1]
-    variation_str = parts[2]  # Can be "none" or a number
-    direction = parts[3]  # "up" or "down"
-    current_quantity = float(parts[4])
-    
+    product_id = safe_split(callback.data, 1)
+    variation_str = safe_split(callback.data, 2, "none")
+    direction = safe_split(callback.data, 3, "up")
+    try:
+        current_quantity = float(safe_split(callback.data, 4, "1"))
+    except (ValueError, TypeError):
+        current_quantity = 1.0
+
     db = get_database()
     products_collection = db.products
     
@@ -876,12 +877,7 @@ async def handle_quantity_adjust(callback: CallbackQuery):
     if not product:
         product = await products_collection.find_one({"_id": product_id})
     
-    if not product:
-        all_products = await products_collection.find({}).to_list(length=100)
-        for p in all_products:
-            if str(p.get('_id')) == product_id:
-                product = p
-                break
+    # ObjectId + string lookups above should be sufficient; no full-collection scan
     
     if not product:
         await callback.message.answer("❌ Product not found.")
@@ -902,7 +898,7 @@ async def handle_quantity_adjust(callback: CallbackQuery):
     if direction == "up":
         new_quantity = current_quantity + increment
     else:  # down
-        new_quantity = max(0, current_quantity - increment)
+        new_quantity = max(increment, current_quantity - increment)
     
     # Round based on unit type
     unit = product.get("unit", "pcs")
@@ -987,12 +983,7 @@ async def handle_quantity_text_input(message: Message, state: FSMContext):
         if not product:
             product = await products_collection.find_one({"_id": product_id})
         
-        if not product:
-            all_products = await products_collection.find({}).to_list(length=100)
-            for p in all_products:
-                if str(p.get('_id')) == product_id:
-                    product = p
-                    break
+        # ObjectId + string lookups above should be sufficient
         
         if not product:
             await state.clear()
@@ -1031,10 +1022,12 @@ async def handle_add_to_cart_qty(callback: CallbackQuery):
     """Add product to cart with specific quantity"""
     await safe_answer_callback(callback)
     
-    parts = callback.data.split(":")
-    product_id = parts[1]
-    quantity = float(parts[2])
-    variation_str = parts[3] if len(parts) > 3 else "none"
+    product_id = safe_split(callback.data, 1)
+    try:
+        quantity = float(safe_split(callback.data, 2, "1"))
+    except (ValueError, TypeError):
+        quantity = 1.0
+    variation_str = safe_split(callback.data, 3, "none")
     
     variation_index = None
     if variation_str != "none":
@@ -1066,12 +1059,7 @@ async def handle_add_to_cart_qty(callback: CallbackQuery):
     if not product:
         product = await products_collection.find_one({"_id": product_id})
     
-    if not product:
-        all_products = await products_collection.find({}).to_list(length=100)
-        for p in all_products:
-            if str(p.get('_id')) == product_id:
-                product = p
-                break
+    # ObjectId + string lookups above should be sufficient; no full-collection scan
     
     if not product:
         await callback.message.answer("❌ Product not found.")
@@ -1262,12 +1250,7 @@ async def handle_view_wishlist(callback: CallbackQuery):
         if not product:
             product = await products_collection.find_one({"_id": product_id})
         
-        if not product:
-            all_products = await products_collection.find({}).to_list(length=100)
-            for p in all_products:
-                if str(p.get('_id')) == product_id:
-                    product = p
-                    break
+        # ObjectId + string lookups above should be sufficient
         
         if product:
             item_name = product["name"]
@@ -1800,12 +1783,7 @@ async def handle_add_to_cart(callback: CallbackQuery):
         product = await products_collection.find_one({"_id": product_id})
     
     # If still not found, try searching by string representation
-    if not product:
-        all_products = await products_collection.find({}).to_list(length=100)
-        for p in all_products:
-            if str(p.get('_id')) == product_id:
-                product = p
-                break
+    # ObjectId + string lookups above should be sufficient; no full-collection scan
     
     if not product:
         await callback.message.answer("❌ Product not found.")
@@ -2038,12 +2016,7 @@ async def handle_checkout(callback: CallbackQuery):
         if not product:
             product = await products_collection.find_one({"_id": product_id})
         
-        if not product:
-            all_products = await products_collection.find({}).to_list(length=100)
-            for p in all_products:
-                if str(p.get('_id')) == product_id:
-                    product = p
-                    break
+        # ObjectId + string lookups above should be sufficient
         
         if product:
             item_total = item["price"] * item["quantity"]
@@ -2215,12 +2188,7 @@ async def show_checkout_invoice(invoice_id: str, callback: CallbackQuery):
         if not product:
             product = await products_collection.find_one({"_id": product_id})
         
-        if not product:
-            all_products = await products_collection.find({}).to_list(length=100)
-            for p in all_products:
-                if str(p.get('_id')) == product_id:
-                    product = p
-                    break
+        # ObjectId + string lookups above should be sufficient
         
         if product:
             product_name = product.get("name", "Unknown Product")
@@ -2942,10 +2910,10 @@ async def handle_confirm_checkout(callback: CallbackQuery):
     
     # Import required modules
     from datetime import datetime, timedelta
-    from services.commission import calculate_commission
+    from services.commission import calculate_commission, COMMISSION_RATE
     from utils.currency_converter import convert_amount
     from services.payment_provider import create_payment_invoice
-    
+
     # Get invoice currency and payment currency
     invoice_currency = invoice.get("currency", "GBP")
     selected_currency = invoice.get("payment_method", "BTC")
@@ -3084,6 +3052,7 @@ async def handle_confirm_checkout(callback: CallbackQuery):
         "paymentStatus": "pending",
         "amount": combined_amount,  # Store original amount in invoice currency (includes shipping)
         "commission": commission,
+        "commission_rate": COMMISSION_RATE,
         "currency": selected_currency.upper(),  # Store payment currency (BTC, LTC, etc.)
         "timestamp": datetime.utcnow(),
         "encrypted_address": invoice.get("delivery_address"),
@@ -3581,12 +3550,7 @@ async def show_cancelled_order_invoice(invoice_id: str, callback: CallbackQuery 
             pass
         if not product:
             product = await products_collection.find_one({"_id": product_id})
-        if not product:
-            all_products = await products_collection.find({}).to_list(length=100)
-            for p in all_products:
-                if str(p.get("_id")) == str(product_id):
-                    product = p
-                    break
+        # ObjectId + string lookups above should be sufficient
 
         product_name = product.get("name", "Unknown Product") if product else "Unknown Product"
         if item.get("variation_index") is not None and product:
@@ -4321,8 +4285,8 @@ async def process_checkout_with_address(callback: CallbackQuery, selected_curren
     # Create orders - combine items with same product_id and variation_index into single orders
     from datetime import datetime
     import uuid
-    from services.commission import calculate_commission
-    
+    from services.commission import calculate_commission, COMMISSION_RATE
+
     # Group items by product_id and variation_index
     grouped_items = {}
     for item in cart["items"]:
@@ -4349,12 +4313,7 @@ async def process_checkout_with_address(callback: CallbackQuery, selected_curren
             product = await products_collection.find_one({"_id": product_id})
         
         # If still not found, try searching by string representation
-        if not product:
-            all_products = await products_collection.find({}).to_list(length=100)
-            for p in all_products:
-                if str(p.get('_id')) == product_id:
-                    product = p
-                    break
+        # ObjectId + string lookups above should be sufficient
         
         if not product:
             continue
@@ -4390,6 +4349,7 @@ async def process_checkout_with_address(callback: CallbackQuery, selected_curren
             "paymentStatus": "pending",
             "amount": order_total,
             "commission": commission,
+            "commission_rate": COMMISSION_RATE,
             "currency": selected_currency.upper(),  # Store payment currency (BTC, LTC, etc.)
             "timestamp": datetime.utcnow()
         }

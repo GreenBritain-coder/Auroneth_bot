@@ -50,7 +50,12 @@ async def handle_payment_webhook(request: web.Request) -> web.Response:
         
         if not order:
             return web.Response(text="Order not found", status=404)
-        
+
+        # Idempotency: skip if already paid (prevents duplicate processing on webhook retry)
+        if order.get("paymentStatus") == "paid":
+            print(f"[Blockonomics Webhook] Order {order_id} already paid, skipping")
+            return web.Response(text="Already processed", status=200)
+
         # Check payment status (Blockonomics: status 2 = confirmed, status 0 = unconfirmed)
         # Adjust based on Blockonomics webhook format
         payment_confirmed = False
@@ -152,7 +157,12 @@ async def handle_shkeeper_webhook(request: web.Request) -> web.Response:
         
         if not order:
             return web.Response(text="Order not found", status=404)
-        
+
+        # Idempotency: skip if already paid (prevents duplicate processing on webhook retry)
+        if order.get("paymentStatus") == "paid":
+            print(f"[SHKeeper Webhook] Order {external_id} already paid, skipping")
+            return web.Response(text="Already processed", status=202)
+
         # Check payment status
         # SHKeeper statuses: UNPAID, PARTIAL, PAID, OVERPAID
         payment_confirmed = False
@@ -305,7 +315,10 @@ async def _process_auto_payout(db, order: dict, order_id: str, crypto: str, bala
         print(f"[AutoPayout] Zero or negative amount, skipping")
         return
 
-    commission_amount = total_crypto * PLATFORM_COMMISSION_RATE
+    # Use the commission rate stored in the order (calculated at checkout time)
+    # to ensure consistency between order record and actual payout
+    order_commission_rate = order.get("commission_rate", PLATFORM_COMMISSION_RATE)
+    commission_amount = total_crypto * order_commission_rate
     payout_amount = total_crypto - commission_amount
 
     # Round to 8 decimal places
@@ -459,7 +472,12 @@ async def handle_cryptapi_webhook(request: web.Request) -> web.Response:
             return web.Response(text="Order not found", status=404)
         
         print(f"[CryptAPI Webhook] Order found: {order_id}, current status: {order.get('paymentStatus')}")
-        
+
+        # Idempotency: skip if already paid (prevents duplicate processing on webhook retry)
+        if order.get("paymentStatus") == "paid":
+            print(f"[CryptAPI Webhook] Order {order_id} already paid, skipping")
+            return web.Response(text="Already processed", status=200)
+
         # CryptAPI webhook format (from docs):
         # - uuid: Unique payment ID
         # - pending: 1 = pending, 0 = confirmed

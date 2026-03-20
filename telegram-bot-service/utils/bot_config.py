@@ -1,14 +1,19 @@
 """
 Utility functions for fetching bot configuration from MongoDB.
-Ensures fresh data on every request (no caching).
+Uses a TTL cache (30 seconds) to avoid hitting the database on every request.
 """
 import os
+import time
 from dotenv import load_dotenv
 from database.connection import get_database
 
 
 # Cache bot token to avoid loading .env repeatedly
 _cached_bot_token = None
+
+# TTL cache for bot config (30 seconds)
+_config_cache = {"config": None, "expires": 0}
+_CACHE_TTL = 30  # seconds
 
 
 def get_bot_token():
@@ -24,28 +29,37 @@ def get_bot_token():
 
 async def get_bot_config():
     """
-    Get current bot configuration from MongoDB.
-    Always fetches fresh data (no caching) to ensure real-time updates.
+    Get current bot configuration from MongoDB with TTL caching.
+    Caches for 30 seconds to avoid hitting DB on every handler call.
     """
+    global _config_cache
+    now = time.time()
+    if _config_cache["config"] is not None and now < _config_cache["expires"]:
+        return _config_cache["config"]
+
     bot_token = get_bot_token()
     if not bot_token:
         return None
-    
+
     db = get_database()
     if db is None:
         return None
-    
+
     bots_collection = db.bots
     bot_config = await bots_collection.find_one({"token": bot_token})
+    _config_cache["config"] = bot_config
+    _config_cache["expires"] = now + _CACHE_TTL
     return bot_config
 
 
+def invalidate_bot_config_cache():
+    """Force refresh on next get_bot_config() call."""
+    global _config_cache
+    _config_cache = {"config": None, "expires": 0}
+
+
 async def get_bot_config_cached():
-    """
-    Get bot configuration with caching (for performance-critical paths).
-    Note: Use get_bot_config() for most cases to ensure fresh data.
-    """
-    # For now, just return fresh data (can add caching later if needed)
+    """Alias for get_bot_config() (now cached by default)."""
     return await get_bot_config()
 
 
