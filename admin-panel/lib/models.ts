@@ -429,6 +429,33 @@ const ContactMessageSchema = new Schema<IContactMessage>({
 
 export const ContactMessage = mongoose.models.ContactMessage || mongoose.model<IContactMessage>('ContactMessage', ContactMessageSchema);
 
+// Contact Response Model
+export interface IContactResponse extends Document {
+  _id: string;
+  botId: string;
+  userId: string;
+  message: string;
+  timestamp: Date;
+  repliedBy: string;
+}
+
+const ContactResponseSchema = new Schema<IContactResponse>({
+  _id: { type: String },
+  botId: { type: String, required: true },
+  userId: { type: String, required: true },
+  message: { type: String, required: true },
+  timestamp: { type: Date, default: Date.now },
+  repliedBy: { type: String },
+}, {
+  _id: true,
+  collection: 'contact_responses',
+});
+
+if (mongoose.models.ContactResponse) {
+  delete mongoose.models.ContactResponse;
+}
+export const ContactResponse = mongoose.model<IContactResponse>('ContactResponse', ContactResponseSchema);
+
 // Admin Model
 export interface IAdmin extends Document {
   _id: string;
