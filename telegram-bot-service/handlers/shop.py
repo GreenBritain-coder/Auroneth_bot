@@ -379,43 +379,42 @@ async def show_product_quantity_interface(callback: CallbackQuery, product: dict
     elif product.get('stock') is not None:
         product_text += f"\n📦 Stock: {product['stock']}"
     
-    # Build keyboard
+    # Build keyboard - compact 2-button rows
     keyboard_buttons = []
-    
-    # Quantity adjustment row
+
     increment_str = f"{increment:.2f}" if increment != int(increment) else str(int(increment))
     var_idx_str = str(actual_variation_index) if actual_variation_index is not None else "none"
-    # Round quantity for callback_data to prevent exceeding Telegram's 64-byte limit
     qty_str = f"{current_quantity:.2f}"
-    keyboard_buttons.append([
-        InlineKeyboardButton(text=f"▲ +{increment_str}", callback_data=f"adjust_qty:{product_id}:{var_idx_str}:up:{qty_str}"),
-        InlineKeyboardButton(text=f"🛒 {cart_total_display}", callback_data="view_cart"),
-        InlineKeyboardButton(text=f"▼ -{increment_str}", callback_data=f"adjust_qty:{product_id}:{var_idx_str}:down:{qty_str}")
-    ])
-    
-    # Enter quantity manually button
-    keyboard_buttons.append([
-        InlineKeyboardButton(text="Enter Quantity Manually", callback_data=f"manual_qty:{product_id}:{var_idx_str}")
-    ])
-    
-    # Add to cart button
     price_display = f"{total_price:.2f}" if currency == "GBP" else f"{total_price:.8f}"
+
+    # Row 1: Quantity adjustment
     keyboard_buttons.append([
-        InlineKeyboardButton(text=f"Add to Cart : {qty_display} {unit} [{currency_symbol}{price_display}]", callback_data=f"add_cart_qty:{product_id}:{qty_str}:{var_idx_str}")
+        InlineKeyboardButton(text=f"➖ {increment_str}", callback_data=f"adjust_qty:{product_id}:{var_idx_str}:down:{qty_str}"),
+        InlineKeyboardButton(text=f"  {qty_display} {unit}  ", callback_data=f"manual_qty:{product_id}:{var_idx_str}"),
+        InlineKeyboardButton(text=f"➕ {increment_str}", callback_data=f"adjust_qty:{product_id}:{var_idx_str}:up:{qty_str}"),
     ])
-    
-    # Wishlist and reviews row
-    wishlist_buttons = []
-    wishlist_buttons.append(InlineKeyboardButton(text="Add to Wishlist", callback_data=f"wishlist_add:{product_id}:{var_idx_str}"))
+
+    # Row 2: Add to cart
+    keyboard_buttons.append([
+        InlineKeyboardButton(text=f"🛒 Add to Cart [{currency_symbol}{price_display}]", callback_data=f"add_cart_qty:{product_id}:{qty_str}:{var_idx_str}")
+    ])
+
+    # Row 3: Cart + Wishlist
+    row3 = [
+        InlineKeyboardButton(text=f"🛒 Cart ({cart_total_display})", callback_data="view_cart"),
+        InlineKeyboardButton(text="❤️ Wishlist", callback_data=f"wishlist_add:{product_id}:{var_idx_str}"),
+    ]
+    keyboard_buttons.append(row3)
+
+    # Row 4: Reviews (if any)
     if review_count > 0:
-        wishlist_buttons.append(InlineKeyboardButton(text=f"{review_count} reviews for this product", callback_data=f"view_reviews:{product_id}"))
-    keyboard_buttons.append(wishlist_buttons)
-    
-    # Back buttons - go to product list (subcategory or category)
-    if actual_variation_index is not None:
         keyboard_buttons.append([
-            InlineKeyboardButton(text="⬅️ Back", callback_data=f"product:{product_id}")
+            InlineKeyboardButton(text=f"⭐ {review_count} Reviews", callback_data=f"view_reviews:{product_id}")
         ])
+
+    # Row 5: Back + Menu
+    if actual_variation_index is not None:
+        back_data = f"product:{product_id}"
     else:
         subcat_id = product.get('subcategory_id') or ''
         cat_id = product.get('category_id') or ''
@@ -425,11 +424,9 @@ async def show_product_quantity_interface(callback: CallbackQuery, product: dict
             back_data = f"category:{cat_id}"
         else:
             back_data = "shop"
-        keyboard_buttons.append([
-            InlineKeyboardButton(text="⬅️ Back", callback_data=back_data)
-        ])
     keyboard_buttons.append([
-        InlineKeyboardButton(text="📋 Back to Menu", callback_data="menu")
+        InlineKeyboardButton(text="⬅️ Back", callback_data=back_data),
+        InlineKeyboardButton(text="📋 Menu", callback_data="menu"),
     ])
     
     keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
