@@ -17,7 +17,7 @@ def record_deposit_address(
     Record a deposit address assigned to an order.
     Call this after successfully creating an invoice (provider returned address).
     """
-    if not db or not address or not order_id:
+    if db is None or not address or not order_id:
         return
     collection = db.addresses
     doc = {
@@ -40,7 +40,7 @@ def mark_address_used(db: Any, order_id: str) -> None:
     Mark the address assigned to this order as 'used' after payment is confirmed.
     Call from payment webhook when order is marked paid.
     """
-    if not db or not order_id:
+    if db is None or not order_id:
         return
     try:
         db.addresses.update_many(
