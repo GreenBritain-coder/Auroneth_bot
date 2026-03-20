@@ -15,6 +15,7 @@ from dotenv import load_dotenv
 from database.connection import connect_to_mongo, close_mongo_connection
 from utils.bot_config import get_bot_config, ensure_bot_registered
 from handlers import start, menu, products, payments, shop, orders, menu_inline, payouts, contact
+from handlers import catalog, product, cart, checkout
 
 # Configure stdout for UTF-8 to handle emojis on Windows
 if sys.stdout.encoding != 'utf-8':
@@ -86,7 +87,11 @@ dp.callback_query.middleware(LoggingMiddleware())
 # Register routers (order matters - more specific handlers first)
 dp.include_router(contact.router)  # Contact handler FIRST to ensure contact callback is caught before any catch-all
 dp.include_router(start.router)  # Commands like /start, /menu, /refresh
-dp.include_router(shop.router)  # Shop handlers including address input (before menu to catch address input)
+dp.include_router(checkout.router)  # Checkout flow (before shop to catch address input)
+dp.include_router(product.router)  # Product detail, variation, quantity handlers
+dp.include_router(cart.router)  # Cart handlers (add, view, clear)
+dp.include_router(catalog.router)  # Category/subcategory browsing
+dp.include_router(shop.router)  # Wishlist + reviews
 dp.include_router(orders.router)  # Orders handler (before menu_inline to catch order callbacks)
 dp.include_router(menu.router)  # Menu button handlers
 dp.include_router(menu_inline.router)  # Menu inline buttons handler (catch-all, should be last)

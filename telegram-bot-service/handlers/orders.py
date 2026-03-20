@@ -564,13 +564,13 @@ async def handle_order_detail(callback: CallbackQuery):
                         is_expired_or_cancelled = True
 
         if is_expired_or_cancelled:
-            from handlers.shop import show_cancelled_order_invoice
+            from handlers.checkout import show_cancelled_order_invoice
             await show_cancelled_order_invoice(invoice_id, callback)
         elif has_payment_address or is_paid:
-            from handlers.shop import show_payment_invoice
+            from handlers.checkout import show_payment_invoice
             await show_payment_invoice(invoice_id, callback)
         else:
-            from handlers.shop import show_checkout_invoice
+            from handlers.checkout import show_checkout_invoice
             await show_checkout_invoice(invoice_id, callback)
     else:
         error_msg = f"\u274c Invoice not found for order {order_id}."
@@ -634,8 +634,7 @@ async def handle_reorder(callback: CallbackQuery):
         await callback.message.answer("\u274c No items found in this order.")
         return
 
-    # Import find_by_id from shop to look up products consistently
-    from handlers.shop import find_by_id
+    from utils.shop_helpers import find_by_id
 
     added_items = []
     skipped_items = []

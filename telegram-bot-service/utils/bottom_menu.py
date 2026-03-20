@@ -2,7 +2,7 @@
 Helpers for menu stats (order count, cart total) used in inline menu.
 """
 from database.connection import get_database
-from handlers.shop import get_cart_total_display
+from utils.shop_helpers import get_cart_total_display
 
 
 async def get_menu_stats(user_id: str, bot_id: str) -> tuple[int, str]:

@@ -6,7 +6,7 @@ from aiogram.types import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardBut
 from aiogram.fsm.context import FSMContext
 from utils.bot_config import get_bot_config
 from utils.callback_utils import safe_answer_callback
-from handlers import shop, orders, menu
+from handlers import shop, orders, menu, catalog, cart
 
 router = Router()
 
@@ -137,7 +137,7 @@ async def handle_menu_inline_button(callback: CallbackQuery, state: FSMContext):
     
     if action == "shop":
         # Edit menu message to show shop categories (stay in same message)
-        await shop.handle_shop_start(callback)
+        await catalog.handle_shop_start(callback)
         return
     elif action == "orders" or "history" in action or "pending" in action:
         # Show orders (edit menu in place, stay in same message)
@@ -257,7 +257,7 @@ async def handle_menu_inline_button(callback: CallbackQuery, state: FSMContext):
         return
     elif "bag" in action:
         # Redirect to cart
-        await shop.handle_view_cart(callback)
+        await cart.handle_view_cart(callback)
         return
     elif action == "noop":
         # No operation - just update menu

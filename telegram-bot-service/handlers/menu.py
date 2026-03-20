@@ -11,7 +11,7 @@ router = Router()
 @router.message(Command("shop"))
 async def handle_shop_command(message: Message):
     """Handle /shop command"""
-    from handlers.shop import handle_shop_start
+    from handlers.catalog import handle_shop_start
     from aiogram.types import CallbackQuery
     
     # Create a fake callback to reuse shop handler
@@ -188,7 +188,7 @@ async def handle_menu_buttons(message: Message):
             else:
                 print(f"[MENU] No custom message found for shop button")
             # Directly show shop categories using the shop handler
-            from handlers.shop import handle_shop_start
+            from handlers.catalog import handle_shop_start
             from aiogram.types import CallbackQuery
             
             # Create a fake callback to reuse shop handler
@@ -301,7 +301,7 @@ async def handle_shop(message: Message, bot_config: dict):
             keyboard = None
         
         # Send product with image if available, otherwise send as text
-        from handlers.shop import prepare_image_for_telegram
+        from utils.shop_helpers import prepare_image_for_telegram
         
         image_url = product.get("image_url")
         image_file = await prepare_image_for_telegram(image_url) if image_url else None

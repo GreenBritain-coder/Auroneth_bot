@@ -206,7 +206,7 @@ async def handle_info(callback: CallbackQuery):
         # If editing fails (e.g., message has photo or can't be edited), send new message
         image_url = product.get("image_url")
         if image_url:
-            from handlers.shop import prepare_image_for_telegram
+            from utils.shop_helpers import prepare_image_for_telegram
             image_file = await prepare_image_for_telegram(image_url)
             
             try:
