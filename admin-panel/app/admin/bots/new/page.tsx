@@ -24,37 +24,38 @@ export default function NewBotPage() {
 
   useEffect(() => {
     // Check user role and existing bots
-    const token = document.cookie
-      .split('; ')
-      .find(row => row.startsWith('admin_token='))
-      ?.split('=')[1];
-    
-    let currentRole = 'bot-owner';
-    if (token) {
-      try {
-        const payload = JSON.parse(atob(token.split('.')[1]));
-        currentRole = payload.role || 'bot-owner';
+    fetch('/api/auth/me')
+      .then(res => res.ok ? res.json() : Promise.reject())
+      .then(data => {
+        const currentRole = data.role || 'bot-owner';
         setUserRole(currentRole);
-      } catch (e) {
-        setUserRole('bot-owner');
-      }
-    } else {
-      setUserRole('bot-owner');
-    }
 
-    // Check if user already has a bot (only for bot-owners, not super-admins)
-    // Use currentRole from token, not state, to avoid race condition
-    if (currentRole !== 'super-admin') {
-      fetch('/api/bots')
-        .then(res => res.json())
-        .then(bots => {
-          if (Array.isArray(bots) && bots.length > 0) {
-            setHasBot(true);
-            setError('You can only have one bot. Please delete your existing bot before creating a new one.');
-          }
-        })
-        .catch(err => console.error('Error checking bots:', err));
-    }
+        // Check if user already has a bot (only for bot-owners, not super-admins)
+        if (currentRole !== 'super-admin') {
+          fetch('/api/bots')
+            .then(res => res.json())
+            .then(bots => {
+              if (Array.isArray(bots) && bots.length > 0) {
+                setHasBot(true);
+                setError('You can only have one bot. Please delete your existing bot before creating a new one.');
+              }
+            })
+            .catch(err => console.error('Error checking bots:', err));
+        }
+      })
+      .catch(() => {
+        setUserRole('bot-owner');
+        // Still check bots for default role
+        fetch('/api/bots')
+          .then(res => res.json())
+          .then(bots => {
+            if (Array.isArray(bots) && bots.length > 0) {
+              setHasBot(true);
+              setError('You can only have one bot. Please delete your existing bot before creating a new one.');
+            }
+          })
+          .catch(err => console.error('Error checking bots:', err));
+      });
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {

@@ -111,20 +111,11 @@ export default function EditBotPage() {
   }, [dragIndex, formData.custom_buttons]);
 
   useEffect(() => {
-    // Get user role from token
-    const token = document.cookie
-      .split('; ')
-      .find(row => row.startsWith('admin_token='))
-      ?.split('=')[1];
-    
-    if (token) {
-      try {
-        const payload = JSON.parse(atob(token.split('.')[1]));
-        setUserRole(payload.role || 'bot-owner');
-      } catch (e) {
-        console.error('Error decoding token:', e);
-      }
-    }
+    // Get user role from server
+    fetch('/api/auth/me')
+      .then(res => res.ok ? res.json() : Promise.reject())
+      .then(data => setUserRole(data.role || 'bot-owner'))
+      .catch(() => {});
     
     if (botId) {
       fetchBot();

@@ -50,13 +50,14 @@ export async function POST(request: NextRequest) {
       role: adminRole,
     });
 
-    // Set cookie in response
-    const response = NextResponse.json({ token });
+    // Set cookie in response — httpOnly prevents XSS token theft
+    const response = NextResponse.json({ success: true });
     response.cookies.set('admin_token', token, {
       path: '/',
-      maxAge: 7 * 24 * 60 * 60, // 7 days
+      maxAge: 24 * 60 * 60, // 24 hours
       sameSite: 'lax',
-      httpOnly: false, // Allow JavaScript to read it
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
     });
 
     return response;

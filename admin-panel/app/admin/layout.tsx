@@ -14,27 +14,14 @@ export default function AdminLayout({
   const [userRole, setUserRole] = useState<string | null>(null);
 
   useEffect(() => {
-    // Decode token to get role (simple base64 decode of payload)
-    const token = document.cookie
-      .split('; ')
-      .find(row => row.startsWith('admin_token='))
-      ?.split('=')[1];
-    
-    if (token) {
-      try {
-        const payload = JSON.parse(atob(token.split('.')[1]));
-        console.log('Token payload:', payload); // Debug log
-        setUserRole(payload.role || 'bot-owner');
-      } catch (e) {
-        console.error('Error decoding token:', e); // Debug log
-      }
-    } else {
-      console.log('No token found in cookies'); // Debug log
-    }
+    fetch('/api/auth/me')
+      .then(res => res.ok ? res.json() : Promise.reject())
+      .then(data => setUserRole(data.role || 'bot-owner'))
+      .catch(() => setUserRole('bot-owner'));
   }, []);
 
-  const handleLogout = () => {
-    document.cookie = 'admin_token=; path=/; max-age=0';
+  const handleLogout = async () => {
+    await fetch('/api/auth/logout', { method: 'POST' });
     router.push('/login');
   };
 

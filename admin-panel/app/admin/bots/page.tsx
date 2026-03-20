@@ -21,22 +21,11 @@ export default function BotsPage() {
 
   useEffect(() => {
     fetchBots();
-    // Get user role from token
-    const token = document.cookie
-      .split('; ')
-      .find(row => row.startsWith('admin_token='))
-      ?.split('=')[1];
-    
-    if (token) {
-      try {
-        const payload = JSON.parse(atob(token.split('.')[1]));
-        setUserRole(payload.role || 'bot-owner');
-      } catch (e) {
-        setUserRole('bot-owner');
-      }
-    } else {
-      setUserRole('bot-owner');
-    }
+    // Get user role from server
+    fetch('/api/auth/me')
+      .then(res => res.ok ? res.json() : Promise.reject())
+      .then(data => setUserRole(data.role || 'bot-owner'))
+      .catch(() => setUserRole('bot-owner'));
   }, []);
 
   const fetchBots = async () => {

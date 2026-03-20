@@ -25,22 +25,12 @@ export default function LoginPage() {
       });
 
       const data = await response.json();
-      
-      console.log('Login response:', { status: response.status, ok: response.ok, hasToken: !!data.token, data });
 
-      if (response.ok && data.token) {
-        // Cookie should already be set by server response
-        // But set it client-side as backup
-        document.cookie = `admin_token=${data.token}; path=/; max-age=${7 * 24 * 60 * 60}; SameSite=Lax`;
-        
-        console.log('Login successful, token received');
-        console.log('Cookies:', document.cookie);
-        
-        // Redirect immediately - cookie should be set by server
+      if (response.ok && data.success) {
+        // httpOnly cookie is set by the server response automatically
         window.location.href = '/admin/bots';
       } else {
-        console.error('Login failed:', { responseOk: response.ok, hasToken: !!data.token, data });
-        setError(data.error || 'Login failed. Check console for details.');
+        setError(data.error || 'Login failed.');
         setLoading(false);
       }
     } catch (err) {
