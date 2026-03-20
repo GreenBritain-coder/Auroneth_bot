@@ -49,7 +49,7 @@ const VENDOR_ACTIONS: Record<string, Array<{
     { status: 'refunded', label: 'Refund', color: 'bg-orange-600 hover:bg-orange-700 text-white', requiresInput: 'refund_txid' },
   ],
   confirmed: [
-    { status: 'shipped', label: 'Mark Shipped', color: 'bg-indigo-600 hover:bg-indigo-700 text-white', requiresInput: 'tracking_info' },
+    { status: 'shipped', label: 'Mark Shipped', color: 'bg-indigo-600 hover:bg-indigo-700 text-white' },
     { status: 'cancelled', label: 'Cancel', color: 'bg-red-600 hover:bg-red-700 text-white', requiresInput: 'cancellation_reason' },
   ],
   shipped: [
@@ -179,7 +179,6 @@ export default function OrdersPage() {
     .reduce((s, o) => s + (o.commission || 0), 0);
 
   const inputLabels: Record<string, { title: string; placeholder: string }> = {
-    tracking_info: { title: 'Tracking Info', placeholder: 'e.g. Royal Mail - AB123456789GB' },
     cancellation_reason: { title: 'Cancellation Reason', placeholder: 'Reason for cancellation' },
     refund_txid: { title: 'Refund TX Hash', placeholder: 'Blockchain transaction hash' },
   };
@@ -280,11 +279,10 @@ export default function OrdersPage() {
                 </div>
               </div>
 
-              {/* Row 3: Notes / Tracking */}
-              {(order.notes || order.tracking_info) && (
+              {/* Row 3: Notes */}
+              {order.notes && (
                 <div className="text-xs text-gray-500 mb-3 bg-gray-50 rounded p-2">
-                  {order.tracking_info && <div>Tracking: <span className="font-mono">{order.tracking_info}</span></div>}
-                  {order.notes && <div>Notes: {order.notes}</div>}
+                  Notes: {order.notes}
                 </div>
               )}
 
