@@ -757,12 +757,24 @@ export default function EditBotPage() {
                           </div>
                         </div>
 
-                        {/* Inline keyboard buttons */}
+                        {/* Inline keyboard buttons - matches actual bot layout */}
                         <div className="mt-1 space-y-1">
+                          {/* Row 1: Reviews (always shown, full width) */}
+                          <div className="flex gap-1">
+                            <div className="flex-1 text-center py-1.5 px-2 rounded text-[12px] font-medium" style={{ backgroundColor: '#4a90d9', color: '#ffffff' }}>
+                              ⭐ Reviews
+                            </div>
+                          </div>
+
+                          {/* Custom buttons from builder */}
                           {(() => {
                             const enabledBtns = formData.custom_buttons
                               .filter(b => b.enabled)
-                              .sort((a, b) => a.order - b.order);
+                              .sort((a, b) => a.order - b.order)
+                              .filter(b => {
+                                const clean = b.label.replace(/[^\w\s]/g, '').toLowerCase().trim();
+                                return clean !== 'orders';
+                              });
                             const rows: Array<typeof enabledBtns> = [];
                             for (let i = 0; i < enabledBtns.length; i += 2) {
                               rows.push(enabledBtns.slice(i, i + 2));
@@ -781,30 +793,34 @@ export default function EditBotPage() {
                                     )}
                                   </div>
                                 ))}
-                                {/* If odd button in row, add empty spacer to keep uniform sizing */}
                                 {row.length === 1 && <div className="flex-1" />}
                               </div>
                             ));
                           })()}
 
-                          {/* Hardcoded rows */}
+                          {/* Hardcoded rows matching actual bot */}
                           <div className="flex gap-1">
                             <div className="flex-1 text-center py-1.5 px-2 rounded text-[12px] font-medium" style={{ backgroundColor: '#4a90d9', color: '#ffffff' }}>
-                              Orders
+                              📦 Orders
                             </div>
                             <div className="flex-1 text-center py-1.5 px-2 rounded text-[12px] font-medium" style={{ backgroundColor: '#4a90d9', color: '#ffffff' }}>
-                              Wishlist
+                              ❤️ Wishlist
                             </div>
                             <div className="flex-1 text-center py-1.5 px-2 rounded text-[12px] font-medium" style={{ backgroundColor: '#4a90d9', color: '#ffffff' }}>
-                              Cart
+                              🛒 Cart
                             </div>
                           </div>
                           <div className="flex gap-1">
                             <div className="flex-1 text-center py-1.5 px-2 rounded text-[12px] font-medium" style={{ backgroundColor: '#4a90d9', color: '#ffffff' }}>
-                              Contact
+                              💬 Contact
                             </div>
+                            {formData.vendor_pgp_key && (
+                              <div className="flex-1 text-center py-1.5 px-2 rounded text-[12px] font-medium" style={{ backgroundColor: '#4a90d9', color: '#ffffff' }}>
+                                🔐 PGP
+                              </div>
+                            )}
                             <div className="flex-1 text-center py-1.5 px-2 rounded text-[12px] font-medium" style={{ backgroundColor: '#4a90d9', color: '#ffffff' }}>
-                              About
+                              ℹ️ About
                             </div>
                           </div>
                         </div>
