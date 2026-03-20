@@ -63,6 +63,64 @@ async def get_bot_config_cached():
     return await get_bot_config()
 
 
+# TTL cache for dynamic vendor rating (60 seconds)
+_rating_cache = {"data": None, "expires": 0}
+_RATING_CACHE_TTL = 60  # seconds
+
+
+async def get_dynamic_rating(bot_id: str):
+    """
+    Calculate vendor rating dynamically from the reviews collection.
+    Returns dict with 'avg_rating' (float, 1-5 scale), 'rating_pct' (str, percentage),
+    'count' (int), or None if no reviews exist.
+    Cached for 60 seconds to avoid DB hits on every message.
+    """
+    global _rating_cache
+    now = time.time()
+    cache_key = str(bot_id)
+
+    # Check cache
+    if (_rating_cache["data"] is not None
+            and _rating_cache.get("bot_id") == cache_key
+            and now < _rating_cache["expires"]):
+        return _rating_cache["data"]
+
+    db = get_database()
+    if db is None:
+        return None
+
+    reviews_collection = db.reviews
+    review_docs = await reviews_collection.find({"bot_id": cache_key}).to_list(length=10000)
+
+    # Also try ObjectId form if no results and ID looks like one
+    if not review_docs and len(cache_key) == 24:
+        try:
+            from bson import ObjectId
+            review_docs = await reviews_collection.find(
+                {"bot_id": ObjectId(cache_key)}
+            ).to_list(length=10000)
+        except Exception:
+            pass
+
+    if not review_docs:
+        result = None
+    else:
+        total = sum(r.get("rating", 0) for r in review_docs)
+        count = len(review_docs)
+        avg = total / count
+        pct = f"{(avg / 5 * 100):.2f}%"
+        result = {"avg_rating": avg, "rating_pct": pct, "count": count}
+
+    _rating_cache = {"data": result, "bot_id": cache_key, "expires": now + _RATING_CACHE_TTL}
+    return result
+
+
+def invalidate_rating_cache():
+    """Force refresh on next get_dynamic_rating() call."""
+    global _rating_cache
+    _rating_cache = {"data": None, "expires": 0}
+
+
 async def ensure_bot_registered():
     """
     If no bot exists for BOT_TOKEN, auto-create a minimal bot record.

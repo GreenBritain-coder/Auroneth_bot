@@ -5,7 +5,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from database.connection import get_database
 from utils.secret_phrase import get_or_create_user_secret_phrase
-from utils.bot_config import get_bot_config
+from utils.bot_config import get_bot_config, get_dynamic_rating
 from utils.callback_utils import safe_answer_callback
 
 router = Router()
@@ -306,11 +306,16 @@ async def show_welcome_message(message: Message, bot_config: dict, secret_phrase
     # Calculate activity (total orders count)
     activity_count = await orders_collection.count_documents({"botId": str(bot_config["_id"])})
     
-    # Rating from bot config
-    rating = bot_config.get("rating", "96.81")
-    rating_count = bot_config.get("rating_count", "7707")
-    if rating and not rating.endswith("%"):
-        rating = f"{rating}%"
+    # Dynamic rating from reviews (with fallback to bot config)
+    dynamic = await get_dynamic_rating(str(bot_config["_id"]))
+    if dynamic:
+        rating = dynamic["rating_pct"]
+        rating_count = str(dynamic["count"])
+    else:
+        rating = bot_config.get("rating", "N/A")
+        rating_count = bot_config.get("rating_count", "0")
+        if rating and rating != "N/A" and not rating.endswith("%"):
+            rating = f"{rating}%"
     
     # Get cut-off time
     cut_off_time = bot_config.get("cut_off_time", "11:00 AM")
@@ -332,7 +337,10 @@ async def show_welcome_message(message: Message, bot_config: dict, secret_phrase
     welcome_parts.append(f"Language : {language}")
     welcome_parts.append("")
     welcome_parts.append(f"Activity : {activity_count} 🔥")
-    welcome_parts.append(f"Rating : 🤩 {rating} ({rating_count})")
+    if dynamic:
+        welcome_parts.append(f"Rating : ⭐ {dynamic['avg_rating']:.1f}/5 ({rating_count} reviews)")
+    else:
+        welcome_parts.append(f"Rating : 🤩 {rating} ({rating_count})")
     welcome_parts.append("")
     welcome_parts.append(f"⏰ Confirm before {cut_off_time} and we'll dispatch the same day.")
     welcome_parts.append("﹎﹎﹎﹎﹎﹎﹎")

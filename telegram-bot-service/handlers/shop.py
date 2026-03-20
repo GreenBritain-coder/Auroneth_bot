@@ -6,7 +6,7 @@ from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKe
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from database.connection import get_database
-from utils.bot_config import get_bot_config
+from utils.bot_config import get_bot_config, invalidate_rating_cache
 from utils.callback_utils import safe_answer_callback
 from typing import Optional
 
@@ -1509,6 +1509,8 @@ async def _save_order_review(order_id: str, user_id: str, bot_id: str, rating: i
         "created_at": datetime.utcnow(),
     }
     await reviews_collection.insert_one(review_doc)
+    # Invalidate the dynamic rating cache so new reviews are reflected immediately
+    invalidate_rating_cache()
     return True
 
 

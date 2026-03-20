@@ -1130,7 +1130,10 @@ export default function EditBotPage() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700">Rating (%)</label>
+                <label className="block text-sm font-medium text-gray-700">
+                  Rating (%)
+                  {userRole !== 'super-admin' && <span className="ml-2 text-xs text-blue-600 font-normal">Dynamic</span>}
+                </label>
                 <input
                   type="text"
                   className={`mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 ${userRole !== 'super-admin' ? 'bg-gray-100 cursor-not-allowed' : ''}`}
@@ -1141,12 +1144,18 @@ export default function EditBotPage() {
                   readOnly={userRole !== 'super-admin'}
                 />
                 {userRole !== 'super-admin' && (
-                  <p className="mt-1 text-sm text-gray-500">Updates automatically from customer reviews.</p>
+                  <p className="mt-1 text-sm text-gray-500">Calculated automatically from customer reviews. Cannot be edited.</p>
+                )}
+                {userRole === 'super-admin' && (
+                  <p className="mt-1 text-sm text-gray-500">Override value. Leave empty to use dynamic calculation from reviews.</p>
                 )}
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700">Rating Count</label>
+                <label className="block text-sm font-medium text-gray-700">
+                  Rating Count
+                  {userRole !== 'super-admin' && <span className="ml-2 text-xs text-blue-600 font-normal">Dynamic</span>}
+                </label>
                 <input
                   type="text"
                   className={`mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 ${userRole !== 'super-admin' ? 'bg-gray-100 cursor-not-allowed' : ''}`}
@@ -1157,7 +1166,10 @@ export default function EditBotPage() {
                   readOnly={userRole !== 'super-admin'}
                 />
                 {userRole !== 'super-admin' && (
-                  <p className="mt-1 text-sm text-gray-500">Updates automatically from customer reviews.</p>
+                  <p className="mt-1 text-sm text-gray-500">Total number of customer reviews. Cannot be edited.</p>
+                )}
+                {userRole === 'super-admin' && (
+                  <p className="mt-1 text-sm text-gray-500">Override value. Leave empty to use dynamic calculation from reviews.</p>
                 )}
               </div>
 
