@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { CATEGORIES, getEmojisFromValues, getValuesFromEmojis } from '../../../../lib/categories';
 
@@ -55,6 +55,58 @@ export default function EditBotPage() {
   });
   const [updatingProfilePic, setUpdatingProfilePic] = useState(false);
   const [userRole, setUserRole] = useState<string | null>(null);
+
+  // Drag and drop state
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const [dropTargetIndex, setDropTargetIndex] = useState<number | null>(null);
+  const dragNodeRef = useRef<HTMLDivElement | null>(null);
+
+  const handleDragStart = useCallback((e: React.DragEvent<HTMLDivElement>, index: number) => {
+    setDragIndex(index);
+    dragNodeRef.current = e.currentTarget as HTMLDivElement;
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', String(index));
+    // Make the drag image slightly transparent
+    requestAnimationFrame(() => {
+      if (dragNodeRef.current) {
+        dragNodeRef.current.style.opacity = '0.4';
+      }
+    });
+  }, []);
+
+  const handleDragEnd = useCallback(() => {
+    if (dragNodeRef.current) {
+      dragNodeRef.current.style.opacity = '1';
+    }
+    setDragIndex(null);
+    setDropTargetIndex(null);
+    dragNodeRef.current = null;
+  }, []);
+
+  const handleDragOver = useCallback((e: React.DragEvent<HTMLDivElement>, index: number) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (dragIndex !== null && dragIndex !== index) {
+      setDropTargetIndex(index);
+    }
+  }, [dragIndex]);
+
+  const handleDrop = useCallback((e: React.DragEvent<HTMLDivElement>, dropIndex: number) => {
+    e.preventDefault();
+    if (dragIndex === null || dragIndex === dropIndex) {
+      setDragIndex(null);
+      setDropTargetIndex(null);
+      return;
+    }
+    const sorted = [...formData.custom_buttons].sort((a, b) => a.order - b.order);
+    const [moved] = sorted.splice(dragIndex, 1);
+    sorted.splice(dropIndex, 0, moved);
+    // Reassign order values
+    const reordered = sorted.map((btn, i) => ({ ...btn, order: i }));
+    setFormData(prev => ({ ...prev, custom_buttons: reordered }));
+    setDragIndex(null);
+    setDropTargetIndex(null);
+  }, [dragIndex, formData.custom_buttons]);
 
   useEffect(() => {
     // Get user role from token
@@ -486,7 +538,7 @@ export default function EditBotPage() {
             <div className="flex items-center justify-between mb-4">
               <div>
                 <h3 className="text-lg font-medium text-gray-900">Menu Buttons</h3>
-                <p className="text-sm text-gray-500">Configure custom buttons that appear in the bot menu. Hardcoded rows (Reviews, Orders/Wishlist/Cart, Contact/About) are always shown.</p>
+                <p className="text-sm text-gray-500">Configure custom buttons that appear in the bot menu. Drag to reorder. Hardcoded rows (Reviews, Orders/Wishlist/Cart, Contact/About) are always shown.</p>
               </div>
               <button
                 type="button"
@@ -510,171 +562,269 @@ export default function EditBotPage() {
               </button>
             </div>
 
-            {formData.custom_buttons.length === 0 && (
-              <div className="text-center py-8 border-2 border-dashed border-gray-300 rounded-lg">
-                <p className="text-gray-500">No custom buttons configured. Click "Add Button" to create one.</p>
-              </div>
-            )}
+            <div className="flex flex-col lg:flex-row gap-6">
+              {/* Button Builder */}
+              <div className="flex-1 min-w-0">
+                {formData.custom_buttons.length === 0 && (
+                  <div className="text-center py-8 border-2 border-dashed border-gray-300 rounded-lg">
+                    <p className="text-gray-500">No custom buttons configured. Click &quot;Add Button&quot; to create one.</p>
+                  </div>
+                )}
 
-            <div className="space-y-3">
-              {formData.custom_buttons
-                .sort((a, b) => a.order - b.order)
-                .map((btn, index) => {
-                  const buttonKey = btn.label.replace(/[^\w\s]/g, '').toLowerCase().trim().replace(/\s+/g, '_');
-                  const isSpecial = ['shop', 'orders'].includes(buttonKey);
+                <div className="space-y-1">
+                  {formData.custom_buttons
+                    .sort((a, b) => a.order - b.order)
+                    .map((btn, index) => {
+                      const buttonKey = btn.label.replace(/[^\w\s]/g, '').toLowerCase().trim().replace(/\s+/g, '_');
+                      const isSpecial = ['shop', 'orders'].includes(buttonKey);
 
-                  return (
-                    <div key={index} className={`border rounded-lg p-4 ${btn.enabled ? 'border-gray-300 bg-white' : 'border-gray-200 bg-gray-50 opacity-70'}`}>
-                      <div className="flex items-start gap-3">
-                        {/* Reorder + enable/disable controls */}
-                        <div className="flex flex-col items-center gap-1 pt-1">
-                          <button
-                            type="button"
-                            disabled={index === 0}
-                            onClick={() => {
-                              const buttons = [...formData.custom_buttons].sort((a, b) => a.order - b.order);
-                              if (index > 0) {
-                                const prevOrder = buttons[index - 1].order;
-                                buttons[index - 1].order = buttons[index].order;
-                                buttons[index].order = prevOrder;
-                                setFormData({ ...formData, custom_buttons: buttons });
-                              }
-                            }}
-                            className="text-gray-400 hover:text-gray-600 disabled:opacity-30 disabled:cursor-not-allowed"
-                            title="Move up"
-                          >
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M14.707 12.707a1 1 0 01-1.414 0L10 9.414l-3.293 3.293a1 1 0 01-1.414-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 010 1.414z" clipRule="evenodd" /></svg>
-                          </button>
-                          <span className="text-xs text-gray-400 font-mono">{index + 1}</span>
-                          <button
-                            type="button"
-                            disabled={index === formData.custom_buttons.length - 1}
-                            onClick={() => {
-                              const buttons = [...formData.custom_buttons].sort((a, b) => a.order - b.order);
-                              if (index < buttons.length - 1) {
-                                const nextOrder = buttons[index + 1].order;
-                                buttons[index + 1].order = buttons[index].order;
-                                buttons[index].order = nextOrder;
-                                setFormData({ ...formData, custom_buttons: buttons });
-                              }
-                            }}
-                            className="text-gray-400 hover:text-gray-600 disabled:opacity-30 disabled:cursor-not-allowed"
-                            title="Move down"
-                          >
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" /></svg>
-                          </button>
-                        </div>
-
-                        {/* Button fields */}
-                        <div className="flex-1 space-y-2">
-                          <div className="flex gap-3">
-                            <div className="flex-1">
-                              <label className="block text-xs font-medium text-gray-600 mb-1">Button Label</label>
-                              <input
-                                type="text"
-                                className="block w-full border border-gray-300 rounded-md px-3 py-1.5 text-sm"
-                                placeholder="e.g., Help, Promotions, User Guide"
-                                value={btn.label}
-                                onChange={(e) => {
-                                  const buttons = [...formData.custom_buttons];
-                                  const sorted = buttons.sort((a, b) => a.order - b.order);
-                                  sorted[index] = { ...sorted[index], label: e.target.value };
-                                  setFormData({ ...formData, custom_buttons: sorted });
-                                }}
-                              />
-                            </div>
-                            <div className="w-28">
-                              <label className="block text-xs font-medium text-gray-600 mb-1">Type</label>
-                              <select
-                                className="block w-full border border-gray-300 rounded-md px-2 py-1.5 text-sm"
-                                value={btn.type}
-                                onChange={(e) => {
-                                  const buttons = [...formData.custom_buttons];
-                                  const sorted = buttons.sort((a, b) => a.order - b.order);
-                                  sorted[index] = { ...sorted[index], type: e.target.value as 'text' | 'url' };
-                                  setFormData({ ...formData, custom_buttons: sorted });
-                                }}
-                              >
-                                <option value="text">Text</option>
-                                <option value="url">URL</option>
-                              </select>
-                            </div>
-                          </div>
-
-                          {btn.type === 'url' && (
-                            <div>
-                              <label className="block text-xs font-medium text-gray-600 mb-1">URL</label>
-                              <input
-                                type="url"
-                                className="block w-full border border-gray-300 rounded-md px-3 py-1.5 text-sm"
-                                placeholder="https://example.com"
-                                value={btn.url || ''}
-                                onChange={(e) => {
-                                  const buttons = [...formData.custom_buttons];
-                                  const sorted = buttons.sort((a, b) => a.order - b.order);
-                                  sorted[index] = { ...sorted[index], url: e.target.value };
-                                  setFormData({ ...formData, custom_buttons: sorted });
-                                }}
-                              />
-                            </div>
+                      return (
+                        <div key={index}>
+                          {/* Drop indicator line - shown above this item when it's the drop target */}
+                          {dropTargetIndex === index && dragIndex !== null && dragIndex > index && (
+                            <div className="h-1 bg-indigo-500 rounded-full mx-2 my-1 transition-all" />
                           )}
+                          <div
+                            draggable
+                            onDragStart={(e) => handleDragStart(e, index)}
+                            onDragEnd={handleDragEnd}
+                            onDragOver={(e) => handleDragOver(e, index)}
+                            onDrop={(e) => handleDrop(e, index)}
+                            className={`border rounded-lg p-4 transition-all ${btn.enabled ? 'border-gray-300 bg-white' : 'border-gray-200 bg-gray-50 opacity-70'} ${dragIndex === index ? 'ring-2 ring-indigo-300' : ''}`}
+                          >
+                            <div className="flex items-start gap-3">
+                              {/* Drag handle */}
+                              <div className="flex flex-col items-center gap-1 pt-1 cursor-grab active:cursor-grabbing select-none" title="Drag to reorder">
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-gray-400" viewBox="0 0 20 20" fill="currentColor">
+                                  <path d="M7 2a2 2 0 10.001 4.001A2 2 0 007 2zm0 6a2 2 0 10.001 4.001A2 2 0 007 8zm0 6a2 2 0 10.001 4.001A2 2 0 007 14zm6-8a2 2 0 10-.001-4.001A2 2 0 0013 6zm0 2a2 2 0 10.001 4.001A2 2 0 0013 8zm0 6a2 2 0 10.001 4.001A2 2 0 0013 14z" />
+                                </svg>
+                                <span className="text-xs text-gray-400 font-mono">{index + 1}</span>
+                              </div>
 
-                          <div>
-                            <label className="block text-xs font-medium text-gray-600 mb-1">
-                              Message {btn.type === 'url' ? '(shown alongside link)' : '(shown when clicked)'}
-                              {isSpecial && (
-                                <span className="ml-1 text-gray-400">(Special button - message shows before default action)</span>
-                              )}
-                            </label>
-                            <textarea
-                              className="block w-full border border-gray-300 rounded-md px-3 py-1.5 text-sm"
-                              rows={2}
-                              placeholder={`Message displayed when "${btn.label || 'this button'}" is clicked`}
-                              value={btn.message}
-                              onChange={(e) => {
-                                const buttons = [...formData.custom_buttons];
-                                const sorted = buttons.sort((a, b) => a.order - b.order);
-                                sorted[index] = { ...sorted[index], message: e.target.value };
-                                setFormData({ ...formData, custom_buttons: sorted });
-                              }}
-                            />
+                              {/* Button fields */}
+                              <div className="flex-1 space-y-2">
+                                <div className="flex gap-3">
+                                  <div className="flex-1">
+                                    <label className="block text-xs font-medium text-gray-600 mb-1">Button Label</label>
+                                    <input
+                                      type="text"
+                                      className="block w-full border border-gray-300 rounded-md px-3 py-1.5 text-sm"
+                                      placeholder="e.g., Help, Promotions, User Guide"
+                                      value={btn.label}
+                                      onChange={(e) => {
+                                        const buttons = [...formData.custom_buttons];
+                                        const sorted = buttons.sort((a, b) => a.order - b.order);
+                                        sorted[index] = { ...sorted[index], label: e.target.value };
+                                        setFormData({ ...formData, custom_buttons: sorted });
+                                      }}
+                                    />
+                                  </div>
+                                  <div className="w-28">
+                                    <label className="block text-xs font-medium text-gray-600 mb-1">Type</label>
+                                    <select
+                                      className="block w-full border border-gray-300 rounded-md px-2 py-1.5 text-sm"
+                                      value={btn.type}
+                                      onChange={(e) => {
+                                        const buttons = [...formData.custom_buttons];
+                                        const sorted = buttons.sort((a, b) => a.order - b.order);
+                                        sorted[index] = { ...sorted[index], type: e.target.value as 'text' | 'url' };
+                                        setFormData({ ...formData, custom_buttons: sorted });
+                                      }}
+                                    >
+                                      <option value="text">Text</option>
+                                      <option value="url">URL</option>
+                                    </select>
+                                  </div>
+                                </div>
+
+                                {btn.type === 'url' && (
+                                  <div>
+                                    <label className="block text-xs font-medium text-gray-600 mb-1">URL</label>
+                                    <input
+                                      type="url"
+                                      className="block w-full border border-gray-300 rounded-md px-3 py-1.5 text-sm"
+                                      placeholder="https://example.com"
+                                      value={btn.url || ''}
+                                      onChange={(e) => {
+                                        const buttons = [...formData.custom_buttons];
+                                        const sorted = buttons.sort((a, b) => a.order - b.order);
+                                        sorted[index] = { ...sorted[index], url: e.target.value };
+                                        setFormData({ ...formData, custom_buttons: sorted });
+                                      }}
+                                    />
+                                  </div>
+                                )}
+
+                                <div>
+                                  <label className="block text-xs font-medium text-gray-600 mb-1">
+                                    Message {btn.type === 'url' ? '(shown alongside link)' : '(shown when clicked)'}
+                                    {isSpecial && (
+                                      <span className="ml-1 text-gray-400">(Special button - message shows before default action)</span>
+                                    )}
+                                  </label>
+                                  <textarea
+                                    className="block w-full border border-gray-300 rounded-md px-3 py-1.5 text-sm"
+                                    rows={2}
+                                    placeholder={`Message displayed when "${btn.label || 'this button'}" is clicked`}
+                                    value={btn.message}
+                                    onChange={(e) => {
+                                      const buttons = [...formData.custom_buttons];
+                                      const sorted = buttons.sort((a, b) => a.order - b.order);
+                                      sorted[index] = { ...sorted[index], message: e.target.value };
+                                      setFormData({ ...formData, custom_buttons: sorted });
+                                    }}
+                                  />
+                                </div>
+                              </div>
+
+                              {/* Enable toggle + delete */}
+                              <div className="flex flex-col items-center gap-2 pt-1">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const buttons = [...formData.custom_buttons].sort((a, b) => a.order - b.order);
+                                    buttons[index] = { ...buttons[index], enabled: !buttons[index].enabled };
+                                    setFormData({ ...formData, custom_buttons: buttons });
+                                  }}
+                                  className={`relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out ${btn.enabled ? 'bg-indigo-600' : 'bg-gray-300'}`}
+                                  title={btn.enabled ? 'Enabled - click to disable' : 'Disabled - click to enable'}
+                                >
+                                  <span className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${btn.enabled ? 'translate-x-4' : 'translate-x-0'}`} />
+                                </button>
+                                <span className="text-xs text-gray-500">{btn.enabled ? 'On' : 'Off'}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const buttons = [...formData.custom_buttons]
+                                      .sort((a, b) => a.order - b.order)
+                                      .filter((_, i) => i !== index)
+                                      .map((b, i) => ({ ...b, order: i }));
+                                    setFormData({ ...formData, custom_buttons: buttons });
+                                  }}
+                                  className="text-red-400 hover:text-red-600 mt-1"
+                                  title="Delete button"
+                                >
+                                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" /></svg>
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                          {/* Drop indicator line - shown below this item when it's the drop target */}
+                          {dropTargetIndex === index && dragIndex !== null && dragIndex < index && (
+                            <div className="h-1 bg-indigo-500 rounded-full mx-2 my-1 transition-all" />
+                          )}
+                        </div>
+                      );
+                    })}
+                </div>
+              </div>
+
+              {/* Live Telegram Preview */}
+              <div className="lg:w-80 flex-shrink-0">
+                <div className="sticky top-4">
+                  <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">Live Preview</p>
+                  <div className="rounded-xl overflow-hidden shadow-lg border border-gray-200" style={{ maxWidth: '320px' }}>
+                    {/* Telegram header */}
+                    <div className="bg-[#517da2] px-4 py-3 flex items-center gap-3">
+                      {formData.profile_picture_url ? (
+                        <img
+                          src={formData.profile_picture_url}
+                          alt=""
+                          className="h-8 w-8 rounded-full object-cover"
+                          onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                        />
+                      ) : (
+                        <div className="h-8 w-8 rounded-full bg-[#7ea8c9] flex items-center justify-center text-white text-sm font-bold">
+                          {(formData.name || 'B').charAt(0).toUpperCase()}
+                        </div>
+                      )}
+                      <div>
+                        <div className="text-white text-sm font-medium leading-tight">{formData.name || 'Bot Name'}</div>
+                        <div className="text-[#a8c8de] text-xs">bot</div>
+                      </div>
+                    </div>
+
+                    {/* Chat area */}
+                    <div className="bg-[#e5ddd5] px-3 py-4 min-h-[200px]" style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg width=\'200\' height=\'200\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cdefs%3E%3Cpattern id=\'p\' width=\'40\' height=\'40\' patternUnits=\'userSpaceOnUse\'%3E%3Ccircle cx=\'20\' cy=\'20\' r=\'1\' fill=\'%23d4ccc4\' opacity=\'0.4\'/%3E%3C/pattern%3E%3C/defs%3E%3Crect fill=\'url(%23p)\' width=\'200\' height=\'200\'/%3E%3C/svg%3E")' }}>
+                      {/* Message bubble */}
+                      <div className="max-w-[85%]">
+                        <div className="bg-white rounded-lg rounded-tl-none px-3 py-2 shadow-sm">
+                          <p className="text-[13px] text-gray-800 whitespace-pre-wrap leading-snug">
+                            {formData.welcome_message || 'Welcome! How can I help you today?'}
+                          </p>
+                          <div className="text-right mt-1">
+                            <span className="text-[10px] text-gray-400">12:00</span>
                           </div>
                         </div>
 
-                        {/* Enable toggle + delete */}
-                        <div className="flex flex-col items-center gap-2 pt-1">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const buttons = [...formData.custom_buttons].sort((a, b) => a.order - b.order);
-                              buttons[index] = { ...buttons[index], enabled: !buttons[index].enabled };
-                              setFormData({ ...formData, custom_buttons: buttons });
-                            }}
-                            className={`relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out ${btn.enabled ? 'bg-indigo-600' : 'bg-gray-300'}`}
-                            title={btn.enabled ? 'Enabled - click to disable' : 'Disabled - click to enable'}
-                          >
-                            <span className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${btn.enabled ? 'translate-x-4' : 'translate-x-0'}`} />
-                          </button>
-                          <span className="text-xs text-gray-500">{btn.enabled ? 'On' : 'Off'}</span>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const buttons = [...formData.custom_buttons]
-                                .sort((a, b) => a.order - b.order)
-                                .filter((_, i) => i !== index)
-                                .map((b, i) => ({ ...b, order: i }));
-                              setFormData({ ...formData, custom_buttons: buttons });
-                            }}
-                            className="text-red-400 hover:text-red-600 mt-1"
-                            title="Delete button"
-                          >
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" /></svg>
-                          </button>
+                        {/* Inline keyboard buttons */}
+                        <div className="mt-1 space-y-1">
+                          {(() => {
+                            const enabledBtns = formData.custom_buttons
+                              .filter(b => b.enabled)
+                              .sort((a, b) => a.order - b.order);
+                            const rows: Array<typeof enabledBtns> = [];
+                            for (let i = 0; i < enabledBtns.length; i += 2) {
+                              rows.push(enabledBtns.slice(i, i + 2));
+                            }
+                            return rows.map((row, ri) => (
+                              <div key={ri} className="flex gap-1">
+                                {row.map((b, bi) => (
+                                  <div
+                                    key={bi}
+                                    className="flex-1 text-center py-1.5 px-2 rounded text-[12px] font-medium truncate"
+                                    style={{ backgroundColor: '#4a90d9', color: '#ffffff' }}
+                                  >
+                                    {b.label || 'Button'}
+                                    {b.type === 'url' && (
+                                      <span className="ml-1 inline-block align-middle" style={{ fontSize: '9px' }}>&#8599;</span>
+                                    )}
+                                  </div>
+                                ))}
+                                {/* If odd button in row, add empty spacer to keep uniform sizing */}
+                                {row.length === 1 && <div className="flex-1" />}
+                              </div>
+                            ));
+                          })()}
+
+                          {/* Hardcoded rows */}
+                          <div className="flex gap-1">
+                            <div className="flex-1 text-center py-1.5 px-2 rounded text-[12px] font-medium" style={{ backgroundColor: '#4a90d9', color: '#ffffff' }}>
+                              Orders
+                            </div>
+                            <div className="flex-1 text-center py-1.5 px-2 rounded text-[12px] font-medium" style={{ backgroundColor: '#4a90d9', color: '#ffffff' }}>
+                              Wishlist
+                            </div>
+                            <div className="flex-1 text-center py-1.5 px-2 rounded text-[12px] font-medium" style={{ backgroundColor: '#4a90d9', color: '#ffffff' }}>
+                              Cart
+                            </div>
+                          </div>
+                          <div className="flex gap-1">
+                            <div className="flex-1 text-center py-1.5 px-2 rounded text-[12px] font-medium" style={{ backgroundColor: '#4a90d9', color: '#ffffff' }}>
+                              Contact
+                            </div>
+                            <div className="flex-1 text-center py-1.5 px-2 rounded text-[12px] font-medium" style={{ backgroundColor: '#4a90d9', color: '#ffffff' }}>
+                              About
+                            </div>
+                          </div>
                         </div>
                       </div>
                     </div>
-                  );
-                })}
+
+                    {/* Input bar */}
+                    <div className="bg-[#f0f0f0] px-3 py-2 flex items-center gap-2 border-t border-gray-200">
+                      <div className="flex-1 bg-white rounded-full px-3 py-1.5 text-xs text-gray-400 border border-gray-200">
+                        Message
+                      </div>
+                      <div className="h-8 w-8 rounded-full bg-[#4a90d9] flex items-center justify-center">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-white" viewBox="0 0 20 20" fill="currentColor">
+                          <path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z" />
+                        </svg>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
 
