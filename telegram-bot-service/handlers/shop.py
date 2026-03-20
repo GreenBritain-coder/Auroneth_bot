@@ -1241,10 +1241,7 @@ async def handle_view_wishlist(callback: CallbackQuery):
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="📋 Back to Menu", callback_data="menu")]
         ])
-        try:
-            await callback.message.edit_text("📝 Your wishlist is empty.", reply_markup=keyboard)
-        except Exception:
-            await callback.message.answer("📝 Your wishlist is empty.", reply_markup=keyboard)
+        await safe_edit_or_send(callback, "📝 Your wishlist is empty.", reply_markup=keyboard)
         return
     
     wishlist_text = "📝 *Your Wishlist*\n\n"
@@ -1307,10 +1304,7 @@ async def handle_view_wishlist(callback: CallbackQuery):
     
     keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
     
-    try:
-        await callback.message.edit_text(wishlist_text, parse_mode="Markdown", reply_markup=keyboard)
-    except:
-        await callback.message.answer(wishlist_text, parse_mode="Markdown", reply_markup=keyboard)
+    await safe_edit_or_send(callback, wishlist_text, parse_mode="Markdown", reply_markup=keyboard)
 
 
 @router.callback_query(F.data.startswith("wishlist_remove:"))

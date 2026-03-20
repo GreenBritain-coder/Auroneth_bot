@@ -63,6 +63,11 @@ async def show_user_orders(message_or_callback: Union[Message, CallbackQuery]):
             try:
                 await message.edit_text(text, **kwargs)
             except Exception:
+                # edit_text fails on photo messages - delete and send new
+                try:
+                    await message.delete()
+                except Exception:
+                    pass
                 await message.answer(text, **kwargs)
         else:
             await message.answer(text, **kwargs)

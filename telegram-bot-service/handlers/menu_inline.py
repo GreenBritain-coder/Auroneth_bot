@@ -45,6 +45,10 @@ async def handle_menu_inline_button(callback: CallbackQuery, state: FSMContext):
         try:
             await callback.message.edit_text("❌ Bot configuration not found.")
         except:
+            try:
+                await callback.message.delete()
+            except Exception:
+                pass
             await callback.message.answer("❌ Bot configuration not found.")
         return
     
@@ -230,9 +234,13 @@ async def handle_menu_inline_button(callback: CallbackQuery, state: FSMContext):
             await callback.message.edit_text(promo_message, parse_mode="Markdown", reply_markup=keyboard)
         except Exception:
             try:
-                await callback.message.edit_text(promo_message, reply_markup=keyboard)
+                await callback.message.delete()
             except Exception:
+                pass
+            try:
                 await callback.message.answer(promo_message, parse_mode="Markdown", reply_markup=keyboard)
+            except Exception:
+                await callback.message.answer(promo_message, reply_markup=keyboard)
         return
     elif "bag" in action:
         # Redirect to cart
@@ -253,7 +261,11 @@ async def handle_menu_inline_button(callback: CallbackQuery, state: FSMContext):
         await callback.message.edit_text(response_text, parse_mode="Markdown", reply_markup=back_to_menu_keyboard)
     except Exception:
         try:
-            await callback.message.edit_text(response_text, reply_markup=back_to_menu_keyboard)
+            await callback.message.delete()
+        except Exception:
+            pass
+        try:
+            await callback.message.answer(response_text, parse_mode="Markdown", reply_markup=back_to_menu_keyboard)
         except Exception:
             await callback.message.answer(response_text, reply_markup=back_to_menu_keyboard)
 

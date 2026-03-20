@@ -397,9 +397,13 @@ async def handle_menu_callback(callback: CallbackQuery, state: FSMContext):
         try:
             await callback.message.edit_text("❌ Bot configuration not found. Please contact administrator.")
         except:
+            try:
+                await callback.message.delete()
+            except Exception:
+                pass
             await callback.message.answer("❌ Bot configuration not found. Please contact administrator.")
         return
-    
+
     # Get main menu buttons - filter out empty strings
     main_buttons = bot_config.get("main_buttons", [])
     main_buttons = [btn for btn in main_buttons if btn and btn.strip()] if isinstance(main_buttons, list) else []
@@ -496,15 +500,19 @@ async def handle_about_callback(callback: CallbackQuery):
         try:
             await callback.message.edit_text("❌ Bot configuration not found.")
         except:
+            try:
+                await callback.message.delete()
+            except Exception:
+                pass
             await callback.message.answer("❌ Bot configuration not found.")
         return
-    
+
     # Prefer custom "about" message, then bot description
     messages = bot_config.get("messages", {})
     about_text = messages.get("about", "").strip() or bot_config.get("description", "").strip()
     if not about_text:
         about_text = "ℹ️ About\n\nWelcome! This is a secure marketplace. Browse products, place orders, and contact the vendor through the Contact button."
-    
+
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="📋 Back to Menu", callback_data="menu")]
     ])
@@ -512,7 +520,11 @@ async def handle_about_callback(callback: CallbackQuery):
         await callback.message.edit_text(about_text, parse_mode="Markdown", reply_markup=keyboard)
     except Exception:
         try:
-            await callback.message.edit_text(about_text, reply_markup=keyboard)
+            await callback.message.delete()
+        except Exception:
+            pass
+        try:
+            await callback.message.answer(about_text, parse_mode="Markdown", reply_markup=keyboard)
         except Exception:
             await callback.message.answer(about_text, reply_markup=keyboard)
 
