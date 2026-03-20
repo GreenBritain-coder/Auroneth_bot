@@ -1854,10 +1854,10 @@ async def handle_view_cart(callback: CallbackQuery):
     
     # Cart action buttons
     keyboard_buttons = [
-        [InlineKeyboardButton(text="💳 Checkout", callback_data="checkout")],
-        [InlineKeyboardButton(text="🗑️ Clear Cart", callback_data="clear_cart")],
-        [InlineKeyboardButton(text="⬅️ Continue Shopping", callback_data="shop")],
-        [InlineKeyboardButton(text="📋 Back to Menu", callback_data="menu")]
+        [InlineKeyboardButton(text="💳 Checkout", callback_data="checkout"),
+         InlineKeyboardButton(text="🗑️ Clear Cart", callback_data="clear_cart")],
+        [InlineKeyboardButton(text="🛍️ Continue Shopping", callback_data="shop"),
+         InlineKeyboardButton(text="📋 Menu", callback_data="menu")]
     ]
     keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
     
