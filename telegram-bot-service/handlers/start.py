@@ -390,76 +390,9 @@ async def show_welcome_message(message: Message, bot_config: dict, secret_phrase
 
 
 async def _build_menu_buttons(bot_config: dict, user_id: str, bot_id: str):
-    """Build inline keyboard with fixed system layout + custom buttons.
-    System buttons have a fixed, identical layout across ALL bots.
-    Custom buttons (vendor-defined) render between Reviews and Shop rows, max 3 per row.
-    """
-    import re
-    from utils.bottom_menu import get_menu_stats
-
-    order_count, cart_display = await get_menu_stats(user_id, bot_id)
-    vendor_pgp_key = bot_config.get("vendor_pgp_key", "")
-
-    rows = []
-
-    # === ROW 1: Reviews (always first) ===
-    rows.append([
-        InlineKeyboardButton(text="⭐ Reviews", callback_data="view_all_reviews")
-    ])
-
-    # === CUSTOM BUTTONS (vendor-defined, between Reviews and Shop, max 3 per row) ===
-    custom_buttons = bot_config.get("custom_buttons", [])
-    # Only include non-system, enabled buttons
-    custom = [
-        b for b in custom_buttons
-        if b.get("type") != "system" and b.get("enabled", True)
-    ]
-    # Also check legacy main_buttons if no custom buttons exist
-    if not custom:
-        main_buttons = bot_config.get("main_buttons", [])
-        main_buttons = [btn for btn in main_buttons if btn and btn.strip()] if isinstance(main_buttons, list) else []
-        # Convert to custom button format, excluding system names
-        system_names = {"shop", "orders", "wishlist", "cart", "contact", "about", "reviews", "pgp"}
-        for btn_text in main_buttons:
-            normalized = re.sub(r'[^\w\s]', '', str(btn_text).lower()).strip()
-            if normalized not in system_names:
-                custom.append({"label": btn_text, "type": "text", "enabled": True, "order": len(custom)})
-
-    custom.sort(key=lambda b: b.get("order", 0))
-    for i in range(0, len(custom), 3):
-        button_row = []
-        for btn in custom[i:i+3]:
-            label = btn.get("label", "")
-            if btn.get("type") == "url" and btn.get("url"):
-                button_row.append(InlineKeyboardButton(text=label, url=btn["url"]))
-            else:
-                cb_data = re.sub(r'\s+', '_', re.sub(r'[^\w\s]', '', label).lower().strip())
-                button_row.append(InlineKeyboardButton(text=label, callback_data=cb_data))
-        if button_row:
-            rows.append(button_row)
-
-    # === FIXED SYSTEM ROWS (identical across all bots) ===
-
-    # Shop + Orders
-    rows.append([
-        InlineKeyboardButton(text="🛍️ Shop", callback_data="shop"),
-        InlineKeyboardButton(text=f"📦 Orders ({order_count})", callback_data="orders"),
-    ])
-
-    # Wishlist + Cart
-    rows.append([
-        InlineKeyboardButton(text="❤️ Wishlist", callback_data="view_wishlist"),
-        InlineKeyboardButton(text=f"🛒 {cart_display}", callback_data="view_cart"),
-    ])
-
-    # Contact + PGP? + About
-    bottom = [InlineKeyboardButton(text="💬 Contact", callback_data="contact")]
-    if vendor_pgp_key:
-        bottom.append(InlineKeyboardButton(text="🔐 PGP", callback_data="pgp"))
-    bottom.append(InlineKeyboardButton(text="ℹ️ About", callback_data="about"))
-    rows.append(bottom)
-
-    return rows
+    """Build inline keyboard rows. Delegates to utils/navigation.py (single source of truth)."""
+    from utils.navigation import build_menu_rows
+    return await build_menu_rows(bot_config, user_id, bot_id)
 
 
 @router.callback_query(F.data == "menu")
