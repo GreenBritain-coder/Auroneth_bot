@@ -18,6 +18,7 @@
 7. [Technical Improvements](#7-technical-improvements)
 8. [In-Bot Analytics & Tracking](#8-in-bot-analytics--tracking)
 9. [Prioritized Roadmap](#9-prioritized-roadmap)
+10. [Implementation Log](#10-implementation-log)
 
 ---
 
@@ -1259,3 +1260,33 @@ Auroneth.bot/
 ---
 
 *This document should be treated as a living specification. Update it as features are implemented, priorities shift, or new requirements emerge.*
+
+---
+
+## 10. Implementation Log
+
+Tracks what has been built, changed, or fixed — updated after each development session.
+
+### 2026-03-20
+
+| Commit | Type | Description | PRD Ref |
+|--------|------|-------------|---------|
+| `16e51a6` | Refactor | Extracted menu keyboard building into `utils/navigation.py` — single source of truth for all handlers | 4.1.1 |
+| `18594bf` | Feature | Orders page redesigned with card layout, status tabs, and inline actions | 5.x |
+| `f8793cb` | Fix | Removed tracking info from orders page (not used in platform) | — |
+| `4f93e96` | Feature | Added tracking info input for internal admin/vendor records only | 5.x |
+| `cbe26c2` | Feature | Product names resolved in orders API instead of showing raw MongoDB IDs | 5.x |
+| `9f3b629` | Fix | Button toggle bug — changed navigation.py filter from type-based to action-based; added drag-and-drop to Live Preview | 4.1.1 |
+| `c9bcb37` | Fix | Button toggle fully working — legacy fallback only fires for pre-migration bots; editor shows all toggleable buttons including system Promotions/Discounts | 4.1.1 |
+
+#### Status Summary (PRD Sections)
+
+| Section | Status | Notes |
+|---------|--------|-------|
+| 4.1.1 Fixed System Button Layout | **Done** | Reviews → Custom → Shop/Orders → Wishlist/Cart → Contact/PGP/About |
+| 4.1.1 Unified Navigation Module | **Done** | `utils/navigation.py` is single source of truth |
+| 4.1.1 Custom Button Toggle | **Done** | Enabled/disabled respected in bot + admin preview |
+| 4.1.1 Preview Drag-and-Drop | **Done** | Custom buttons draggable in Live Preview |
+| 5.x Orders Page Redesign | **Done** | Card layout, inline status transitions, product name resolution |
+| 1.5 Vendor Reply from Admin | Planned | Not yet implemented |
+| 1.4 Extended Order Status | Partial | State machine designed, not fully wired |
