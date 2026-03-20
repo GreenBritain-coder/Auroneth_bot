@@ -4,6 +4,7 @@ from aiohttp import web
 from database.connection import get_database
 from services.commission import calculate_commission
 from datetime import datetime
+import asyncio
 import json
 import os
 
@@ -30,60 +31,52 @@ async def handle_payment_webhook(request: web.Request) -> web.Response:
         # Parse webhook data (Blockonomics sends JSON)
         try:
             data_dict = await request.json()
-        except:
-            # Fallback to form data
+        except (json.JSONDecodeError, ValueError) as e:
+            print(f"[Blockonomics Webhook] JSON parse failed: {e}, trying form data")
             data = await request.post()
             data_dict = dict(data)
-        
+
         # Extract payment information from Blockonomics webhook
-        # Blockonomics webhook format may vary, adjust based on their API
         txn_id = data_dict.get("txn_id") or data_dict.get("txid")
-        status = data_dict.get("status") or data_dict.get("value")  # 0 = unconfirmed, 2 = confirmed
+        status = data_dict.get("status") or data_dict.get("value")
         status_text = data_dict.get("status_text", "")
-        order_id = data_dict.get("order_id") or data_dict.get("custom") or data_dict.get("addr")  # Blockonomics uses addr or custom
-        
+        order_id = data_dict.get("order_id") or data_dict.get("custom") or data_dict.get("addr")
+
         if not order_id:
             return web.Response(text="Missing order ID", status=400)
-        
-        # Find order
-        order = await orders_collection.find_one({"_id": order_id})
-        
-        if not order:
-            return web.Response(text="Order not found", status=404)
-
-        # Idempotency: skip if already paid (prevents duplicate processing on webhook retry)
-        if order.get("paymentStatus") == "paid":
-            print(f"[Blockonomics Webhook] Order {order_id} already paid, skipping")
-            return web.Response(text="Already processed", status=200)
 
         # Check payment status (Blockonomics: status 2 = confirmed, status 0 = unconfirmed)
-        # Adjust based on Blockonomics webhook format
         payment_confirmed = False
         if isinstance(status, int):
-            payment_confirmed = status >= 2  # Blockonomics uses 2 for confirmed
+            payment_confirmed = status >= 2
         elif isinstance(status, str):
             payment_confirmed = status.lower() in ["confirmed", "complete", "paid"]
-        elif status_text:
-            payment_confirmed = status_text.lower() in ["confirmed", "complete", "paid"]
-        
-        if payment_confirmed:
-            # Payment confirmed
-            await orders_collection.update_one(
-                {"_id": order_id},
-                {"$set": {"paymentStatus": "paid"}}
-            )
-            # Mark deposit address as used (HD-style address tracking)
-            from database.addresses import mark_address_used
-            mark_address_used(db, str(order_id))
+        # Don't accept status_text alone as confirmation (security: prevents forged webhooks)
 
-            # Create commission record if not exists
-            existing_commission = await commissions_collection.find_one({"orderId": order_id})
-            if not existing_commission:
-                commission_record = {
-                    "botId": order["botId"],
-                    "orderId": order_id,
-                    "amount": order["commission"],
-                    "timestamp": datetime.utcnow()
+        if not payment_confirmed:
+            return web.Response(text="Payment not confirmed", status=200)
+
+        # Atomic update: only mark paid if not already paid (prevents race condition)
+        order = await orders_collection.find_one_and_update(
+            {"_id": order_id, "paymentStatus": {"$ne": "paid"}},
+            {"$set": {"paymentStatus": "paid"}}
+        )
+        if not order:
+            print(f"[Blockonomics Webhook] Order {order_id} already paid or not found, skipping")
+            return web.Response(text="Already processed", status=200)
+
+        # Mark deposit address as used (run in executor to avoid blocking event loop)
+        from database.addresses import mark_address_used
+        await asyncio.get_event_loop().run_in_executor(None, mark_address_used, db, str(order_id))
+
+        # Create commission record if not exists
+        existing_commission = await commissions_collection.find_one({"orderId": order_id})
+        if not existing_commission:
+            commission_record = {
+                "botId": order.get("botId"),
+                "orderId": order_id,
+                "amount": order.get("commission", 0),
+                "timestamp": datetime.utcnow()
                 }
                 await commissions_collection.insert_one(commission_record)
             
@@ -99,20 +92,23 @@ async def handle_payment_webhook(request: web.Request) -> web.Response:
                 bot_config = await get_bot_config()
                 
                 # If get_bot_config doesn't match, fall back to finding by botId
-                if not bot_config or str(bot_config.get("_id")) != str(order["botId"]):
+                if not bot_config or str(bot_config.get("_id")) != str(order.get("botId")):
                     bots_collection = db.bots
-                    bot_config = await bots_collection.find_one({"_id": order["botId"]})
-                
+                    bot_config = await bots_collection.find_one({"_id": order.get("botId")})
+
                 if bot_config:
                     bot = Bot(token=bot_config["token"])
-                    thank_you_message = bot_config.get("messages", {}).get("thank_you", "Thank you for your purchase!")
-                    await bot.send_message(
-                        chat_id=order["userId"],
-                        text=thank_you_message
-                    )
+                    try:
+                        thank_you_message = bot_config.get("messages", {}).get("thank_you", "Thank you for your purchase!")
+                        await bot.send_message(
+                            chat_id=order.get("userId"),
+                            text=thank_you_message
+                        )
+                    finally:
+                        await bot.session.close()
             except Exception as e:
                 print(f"Error sending confirmation message: {e}")
-        
+
         return web.Response(text="OK")
     
     except Exception as e:
@@ -152,17 +148,6 @@ async def handle_shkeeper_webhook(request: web.Request) -> web.Response:
         if not external_id:
             return web.Response(text="Missing external_id", status=400)
         
-        # Find order by external_id (order_id)
-        order = await orders_collection.find_one({"_id": external_id})
-        
-        if not order:
-            return web.Response(text="Order not found", status=404)
-
-        # Idempotency: skip if already paid (prevents duplicate processing on webhook retry)
-        if order.get("paymentStatus") == "paid":
-            print(f"[SHKeeper Webhook] Order {external_id} already paid, skipping")
-            return web.Response(text="Already processed", status=202)
-
         # Check payment status
         # SHKeeper statuses: UNPAID, PARTIAL, PAID, OVERPAID
         payment_confirmed = False
@@ -170,11 +155,14 @@ async def handle_shkeeper_webhook(request: web.Request) -> web.Response:
             payment_confirmed = True
         elif paid is True:
             payment_confirmed = True
-        
+
+        if not payment_confirmed:
+            return web.Response(text="Payment not confirmed", status=202)
+
         if payment_confirmed:
-            # Payment confirmed
-            await orders_collection.update_one(
-                {"_id": external_id},
+            # Atomic update: only mark paid if not already paid (prevents race condition)
+            order = await orders_collection.find_one_and_update(
+                {"_id": external_id, "paymentStatus": {"$ne": "paid"}},
                 {"$set": {
                     "paymentStatus": "paid",
                     "paymentDetails": {
@@ -187,78 +175,85 @@ async def handle_shkeeper_webhook(request: web.Request) -> web.Response:
                     }
                 }}
             )
-            # Mark deposit address as used (HD-style address tracking)
+            if not order:
+                print(f"[SHKeeper Webhook] Order {external_id} already paid or not found, skipping")
+                return web.Response(text="Already processed", status=202)
+
+            # Mark deposit address as used (run in executor to avoid blocking event loop)
             from database.addresses import mark_address_used
-            mark_address_used(db, str(external_id))
+            await asyncio.get_event_loop().run_in_executor(None, mark_address_used, db, str(external_id))
 
             # Create commission record if not exists
             existing_commission = await commissions_collection.find_one({"orderId": external_id})
             if not existing_commission:
                 commission_record = {
-                    "botId": order["botId"],
+                    "botId": order.get("botId"),
                     "orderId": external_id,
-                    "amount": order["commission"],
+                    "amount": order.get("commission", 0),
                     "timestamp": datetime.utcnow()
                 }
                 await commissions_collection.insert_one(commission_record)
-            
+
             # Send confirmation message to user
             try:
                 from aiogram import Bot
                 import os
                 from dotenv import load_dotenv
                 load_dotenv()
-                
+
                 # Get bot config - always fetches fresh from MongoDB
                 from utils.bot_config import get_bot_config
                 bot_config = await get_bot_config()
-                
+
                 # If get_bot_config doesn't match, fall back to finding by botId
-                if not bot_config or str(bot_config.get("_id")) != str(order["botId"]):
+                if not bot_config or str(bot_config.get("_id")) != str(order.get("botId")):
                     bots_collection = db.bots
-                    bot_config = await bots_collection.find_one({"_id": order["botId"]})
-                
+                    bot_config = await bots_collection.find_one({"_id": order.get("botId")})
+
                 if bot_config:
                     bot = Bot(token=bot_config["token"])
-                    thank_you_message = bot_config.get("messages", {}).get("thank_you", "Thank you for your purchase!")
-                    await bot.send_message(
-                        chat_id=order["userId"],
-                        text=thank_you_message
-                    )
-                    # Try to update the invoice message in Telegram to show "Paid"
                     try:
-                        invoices_collection = db.invoices
-                        invoice = await invoices_collection.find_one({"invoice_id": external_id})
-                        if not invoice:
-                            invoice = await invoices_collection.find_one({"payment_invoice_id": external_id})
+                        thank_you_message = bot_config.get("messages", {}).get("thank_you", "Thank you for your purchase!")
+                        await bot.send_message(
+                            chat_id=order.get("userId"),
+                            text=thank_you_message
+                        )
+                        # Try to update the invoice message in Telegram to show "Paid"
+                        try:
+                            invoices_collection = db.invoices
+                            invoice = await invoices_collection.find_one({"invoice_id": external_id})
+                            if not invoice:
+                                invoice = await invoices_collection.find_one({"payment_invoice_id": external_id})
 
-                        if invoice and invoice.get("telegram_message_id") and invoice.get("telegram_chat_id"):
-                            from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-                            display_id = invoice.get("invoice_id", external_id)
-                            paid_text = (
-                                f"✅ *Invoice {display_id}*\n\n"
-                                f"*Status: Paid*\n"
-                                f"💰 Amount: {invoice.get('payment_amount', '')} {invoice.get('payment_currency', '')}\n\n"
-                                f"Thank you for your payment!"
-                            )
-                            paid_keyboard = InlineKeyboardMarkup(inline_keyboard=[
-                                [InlineKeyboardButton(text="⬅️ Back to Orders", callback_data=f"back_pay:{display_id}")]
-                            ])
-                            await bot.edit_message_text(
-                                text=paid_text,
-                                chat_id=invoice["telegram_chat_id"],
-                                message_id=invoice["telegram_message_id"],
-                                parse_mode="Markdown",
-                                reply_markup=paid_keyboard
-                            )
-                            print(f"[SHKeeper Webhook] Invoice message updated to Paid in Telegram")
-                    except Exception as e:
-                        print(f"[SHKeeper Webhook] Could not update invoice message: {e}")
+                            if invoice and invoice.get("telegram_message_id") and invoice.get("telegram_chat_id"):
+                                from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+                                display_id = invoice.get("invoice_id", external_id)
+                                paid_text = (
+                                    f"✅ *Invoice {display_id}*\n\n"
+                                    f"*Status: Paid*\n"
+                                    f"💰 Amount: {invoice.get('payment_amount', '')} {invoice.get('payment_currency', '')}\n\n"
+                                    f"Thank you for your payment!"
+                                )
+                                paid_keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                                    [InlineKeyboardButton(text="⬅️ Back to Orders", callback_data=f"back_pay:{display_id}")]
+                                ])
+                                await bot.edit_message_text(
+                                    text=paid_text,
+                                    chat_id=invoice["telegram_chat_id"],
+                                    message_id=invoice["telegram_message_id"],
+                                    parse_mode="Markdown",
+                                    reply_markup=paid_keyboard
+                                )
+                                print(f"[SHKeeper Webhook] Invoice message updated to Paid in Telegram")
+                        except Exception as e:
+                            print(f"[SHKeeper Webhook] Could not update invoice message: {e}")
+                    finally:
+                        await bot.session.close()  # Prevent connection leak
 
             except Exception as e:
                 print(f"Error sending confirmation message: {e}")
 
-            # Auto-payout: send vendor their share (order amount minus platform commission)
+            # Auto-payout: send vendor their share (run in executor to avoid blocking event loop)
             try:
                 await _process_auto_payout(db, order, external_id, crypto, balance_crypto)
             except Exception as e:
@@ -330,53 +325,44 @@ async def _process_auto_payout(db, order: dict, order_id: str, crypto: str, bala
         return
 
     print(f"[AutoPayout] Order {order_id}: {total_crypto} {crypto_upper}")
-    print(f"[AutoPayout] Commission ({PLATFORM_COMMISSION_RATE*100}%): {commission_amount} {crypto_upper}")
+    print(f"[AutoPayout] Commission ({order_commission_rate*100}%): {commission_amount} {crypto_upper}")
     print(f"[AutoPayout] Vendor payout: {payout_amount} {crypto_upper} -> {payout_address}")
 
-    # Send payout via SHKeeper
-    result = create_payout(
-        address=payout_address,
-        amount=payout_amount,
-        currency=crypto_upper,
+    # Send payout via SHKeeper (run sync call in executor to avoid blocking event loop)
+    result = await asyncio.get_event_loop().run_in_executor(
+        None,
+        lambda: create_payout(
+            currency=crypto_upper,
+            amount=str(payout_amount),
+            destination=payout_address,
+        )
     )
 
+    # Record payout in database
+    payout_record = {
+        "orderId": order_id,
+        "botId": order.get("botId"),
+        "vendorAddress": payout_address,
+        "currency": crypto_upper,
+        "totalAmount": total_crypto,
+        "commissionAmount": commission_amount,
+        "commissionRate": order_commission_rate,
+        "payoutAmount": payout_amount,
+        "createdAt": datetime.utcnow(),
+    }
+
+    payouts_collection = db.commission_payouts
     if result.get("success"):
-        print(f"[AutoPayout] ✅ Payout sent: {payout_amount} {crypto_upper} to {payout_address}, txid={result.get('txid')}")
-
-        # Record payout in database
-        payouts_collection = db.commission_payouts
-        await payouts_collection.insert_one({
-            "orderId": order_id,
-            "botId": order.get("botId"),
-            "vendorAddress": payout_address,
-            "currency": crypto_upper,
-            "totalAmount": total_crypto,
-            "commissionAmount": commission_amount,
-            "commissionRate": PLATFORM_COMMISSION_RATE,
-            "payoutAmount": payout_amount,
-            "txid": result.get("txid"),
-            "status": "sent",
-            "createdAt": datetime.utcnow(),
-        })
+        print(f"[AutoPayout] Payout sent: {payout_amount} {crypto_upper} to {payout_address}, txid={result.get('txid')}")
+        payout_record["txid"] = result.get("txid")
+        payout_record["status"] = "sent"
     else:
-        print(f"[AutoPayout] ❌ Payout failed: {result.get('error')}")
+        print(f"[AutoPayout] Payout failed: {result.get('error')}")
+        payout_record["txid"] = None
+        payout_record["status"] = "failed"
+        payout_record["error"] = result.get("error")
 
-        # Record failed payout for retry/review
-        payouts_collection = db.commission_payouts
-        await payouts_collection.insert_one({
-            "orderId": order_id,
-            "botId": order.get("botId"),
-            "vendorAddress": payout_address,
-            "currency": crypto_upper,
-            "totalAmount": total_crypto,
-            "commissionAmount": commission_amount,
-            "commissionRate": PLATFORM_COMMISSION_RATE,
-            "payoutAmount": payout_amount,
-            "txid": None,
-            "status": "failed",
-            "error": result.get("error"),
-            "createdAt": datetime.utcnow(),
-        })
+    await payouts_collection.insert_one(payout_record)
 
 
 async def handle_cryptapi_webhook(request: web.Request) -> web.Response:
@@ -521,10 +507,10 @@ async def handle_cryptapi_webhook(request: web.Request) -> web.Response:
             print(f"[CryptAPI Webhook] Payment NOT confirmed. pending={pending}, status='{status}'")
         
         if payment_confirmed:
-            # Payment confirmed
+            # Atomic update: only mark paid if not already paid (prevents race condition)
             print(f"[CryptAPI Webhook] Updating order {order_id} to paid status")
-            await orders_collection.update_one(
-                {"_id": order_id},
+            order = await orders_collection.find_one_and_update(
+                {"_id": order_id, "paymentStatus": {"$ne": "paid"}},
                 {"$set": {
                     "paymentStatus": "paid",
                     "paymentDetails": {
@@ -535,9 +521,13 @@ async def handle_cryptapi_webhook(request: web.Request) -> web.Response:
                     }
                 }}
             )
-            # Mark deposit address as used (HD-style address tracking)
+            if not order:
+                print(f"[CryptAPI Webhook] Order {order_id} already paid or not found, skipping")
+                return web.Response(text="Already processed", status=200)
+
+            # Mark deposit address as used (run in executor to avoid blocking event loop)
             from database.addresses import mark_address_used
-            mark_address_used(db, str(order_id))
+            await asyncio.get_event_loop().run_in_executor(None, mark_address_used, db, str(order_id))
             print(f"[CryptAPI Webhook] Order {order_id} marked as paid")
 
             # Also update invoice status if invoice exists
@@ -563,14 +553,14 @@ async def handle_cryptapi_webhook(request: web.Request) -> web.Response:
             existing_commission = await commissions_collection.find_one({"orderId": order_id})
             if not existing_commission:
                 commission_record = {
-                    "botId": order["botId"],
+                    "botId": order.get("botId"),
                     "orderId": order_id,
-                    "amount": order["commission"],
+                    "amount": order.get("commission", 0),
                     "timestamp": datetime.utcnow()
                 }
                 await commissions_collection.insert_one(commission_record)
                 print(f"[CryptAPI Webhook] Commission record created for order {order_id}")
-            
+
             # Send confirmation message and update invoice message
             try:
                 from aiogram import Bot
@@ -581,47 +571,50 @@ async def handle_cryptapi_webhook(request: web.Request) -> web.Response:
                 from utils.bot_config import get_bot_config
                 bot_config = await get_bot_config()
 
-                if not bot_config or str(bot_config.get("_id")) != str(order["botId"]):
+                if not bot_config or str(bot_config.get("_id")) != str(order.get("botId")):
                     bots_collection = db.bots
-                    bot_config = await bots_collection.find_one({"_id": order["botId"]})
+                    bot_config = await bots_collection.find_one({"_id": order.get("botId")})
 
                 if bot_config:
                     bot = Bot(token=bot_config["token"])
-                    thank_you_message = bot_config.get("messages", {}).get("thank_you", "Thank you for your purchase!")
-                    await bot.send_message(
-                        chat_id=order["userId"],
-                        text=thank_you_message
-                    )
-                    print(f"[CryptAPI Webhook] Confirmation message sent to user {order['userId']}")
-
-                    # Try to update the invoice message in Telegram to show "Paid"
                     try:
-                        invoice = await invoices_collection.find_one({"invoice_id": order_id})
-                        if not invoice:
-                            invoice = await invoices_collection.find_one({"payment_invoice_id": order_id})
+                        thank_you_message = bot_config.get("messages", {}).get("thank_you", "Thank you for your purchase!")
+                        await bot.send_message(
+                            chat_id=order.get("userId"),
+                            text=thank_you_message
+                        )
+                        print(f"[CryptAPI Webhook] Confirmation message sent to user {order.get('userId')}")
 
-                        if invoice and invoice.get("telegram_message_id") and invoice.get("telegram_chat_id"):
-                            from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-                            display_id = invoice.get("invoice_id", order_id)
-                            paid_text = (
-                                f"✅ *Invoice {display_id}*\n\n"
-                                f"*Status: Paid*\n"
-                                f"💰 Amount: {invoice.get('payment_amount', '')} {invoice.get('payment_currency', '')}\n\n"
-                                f"Thank you for your payment!"
-                            )
-                            paid_keyboard = InlineKeyboardMarkup(inline_keyboard=[
-                                [InlineKeyboardButton(text="⬅️ Back to Orders", callback_data=f"back_pay:{display_id}")]
-                            ])
-                            await bot.edit_message_text(
-                                text=paid_text,
-                                chat_id=invoice["telegram_chat_id"],
-                                message_id=invoice["telegram_message_id"],
-                                parse_mode="Markdown",
-                                reply_markup=paid_keyboard
-                            )
-                            print(f"[CryptAPI Webhook] Invoice message updated to Paid in Telegram")
-                    except Exception as e:
-                        print(f"[CryptAPI Webhook] Could not update invoice message: {e}")
+                        # Try to update the invoice message in Telegram to show "Paid"
+                        try:
+                            invoice = await invoices_collection.find_one({"invoice_id": order_id})
+                            if not invoice:
+                                invoice = await invoices_collection.find_one({"payment_invoice_id": order_id})
+
+                            if invoice and invoice.get("telegram_message_id") and invoice.get("telegram_chat_id"):
+                                from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+                                display_id = invoice.get("invoice_id", order_id)
+                                paid_text = (
+                                    f"✅ *Invoice {display_id}*\n\n"
+                                    f"*Status: Paid*\n"
+                                    f"💰 Amount: {invoice.get('payment_amount', '')} {invoice.get('payment_currency', '')}\n\n"
+                                    f"Thank you for your payment!"
+                                )
+                                paid_keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                                    [InlineKeyboardButton(text="⬅️ Back to Orders", callback_data=f"back_pay:{display_id}")]
+                                ])
+                                await bot.edit_message_text(
+                                    text=paid_text,
+                                    chat_id=invoice["telegram_chat_id"],
+                                    message_id=invoice["telegram_message_id"],
+                                    parse_mode="Markdown",
+                                    reply_markup=paid_keyboard
+                                )
+                                print(f"[CryptAPI Webhook] Invoice message updated to Paid in Telegram")
+                        except Exception as e:
+                            print(f"[CryptAPI Webhook] Could not update invoice message: {e}")
+                    finally:
+                        await bot.session.close()
             except Exception as e:
                 print(f"Error sending confirmation message: {e}")
             
