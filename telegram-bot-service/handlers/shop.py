@@ -20,6 +20,23 @@ def safe_split(data: str, index: int, default: str = "") -> str:
     return parts[index] if len(parts) > index else default
 
 
+async def find_by_id(collection, doc_id: str):
+    """Find a document by ID, handling both ObjectId and string formats.
+    Replaces the repeated try-ObjectId/except/try-string pattern throughout the codebase."""
+    from bson import ObjectId
+    from bson.errors import InvalidId
+    # Try as ObjectId first (most common for MongoDB)
+    if doc_id and len(str(doc_id)) == 24:
+        try:
+            result = await collection.find_one({"_id": ObjectId(doc_id)})
+            if result:
+                return result
+        except InvalidId:
+            pass
+    # Fallback to string ID
+    return await collection.find_one({"_id": doc_id})
+
+
 class QuantityInputStates(StatesGroup):
     waiting_for_quantity = State()
 
@@ -729,23 +746,7 @@ async def handle_product(callback: CallbackQuery):
     db = get_database()
     products_collection = db.products
     
-    # Try to find product - handle both ObjectId and string IDs
-    from bson import ObjectId
-    product = None
-    
-    # First try as ObjectId (if it's a valid ObjectId string)
-    try:
-        if len(product_id) == 24:  # ObjectId hex string length
-            product = await products_collection.find_one({"_id": ObjectId(product_id)})
-    except Exception as e:
-        pass
-    
-    # If not found, try as string
-    if not product:
-        product = await products_collection.find_one({"_id": product_id})
-    
-    # If still not found, try searching by string representation
-    # ObjectId + string lookups above should be sufficient; no full-collection scan
+    product = await find_by_id(products_collection, product_id)
     
     if not product:
         await callback.message.answer("❌ Product not found.")
@@ -820,21 +821,7 @@ async def handle_variation(callback: CallbackQuery):
     
     # Try to find product - handle both ObjectId and string IDs
     from bson import ObjectId
-    product = None
-    
-    # First try as ObjectId
-    try:
-        if len(product_id) == 24:
-            product = await products_collection.find_one({"_id": ObjectId(product_id)})
-    except Exception:
-        pass
-    
-    # If not found, try as string
-    if not product:
-        product = await products_collection.find_one({"_id": product_id})
-    
-    # If still not found, try searching by string representation
-    # ObjectId + string lookups above should be sufficient; no full-collection scan
+    product = await find_by_id(products_collection, product_id)
     
     if not product:
         await callback.message.answer("❌ Product not found.")
@@ -867,17 +854,7 @@ async def handle_quantity_adjust(callback: CallbackQuery):
     
     # Get product
     from bson import ObjectId
-    product = None
-    try:
-        if len(product_id) == 24:
-            product = await products_collection.find_one({"_id": ObjectId(product_id)})
-    except Exception:
-        pass
-    
-    if not product:
-        product = await products_collection.find_one({"_id": product_id})
-    
-    # ObjectId + string lookups above should be sufficient; no full-collection scan
+    product = await find_by_id(products_collection, product_id)
     
     if not product:
         await callback.message.answer("❌ Product not found.")
@@ -972,18 +949,7 @@ async def handle_quantity_text_input(message: Message, state: FSMContext):
         db = get_database()
         products_collection = db.products
         
-        from bson import ObjectId
-        product = None
-        try:
-            if len(product_id) == 24:
-                product = await products_collection.find_one({"_id": ObjectId(product_id)})
-        except Exception:
-            pass
-        
-        if not product:
-            product = await products_collection.find_one({"_id": product_id})
-        
-        # ObjectId + string lookups above should be sufficient
+        product = await find_by_id(products_collection, product_id)
         
         if not product:
             await state.clear()
@@ -1049,17 +1015,7 @@ async def handle_add_to_cart_qty(callback: CallbackQuery):
     
     # Get product
     from bson import ObjectId
-    product = None
-    try:
-        if len(product_id) == 24:
-            product = await products_collection.find_one({"_id": ObjectId(product_id)})
-    except Exception:
-        pass
-    
-    if not product:
-        product = await products_collection.find_one({"_id": product_id})
-    
-    # ObjectId + string lookups above should be sufficient; no full-collection scan
+    product = await find_by_id(products_collection, product_id)
     
     if not product:
         await callback.message.answer("❌ Product not found.")
@@ -1239,18 +1195,7 @@ async def handle_view_wishlist(callback: CallbackQuery):
         product_id = item.get("product_id")
         variation_index = item.get("variation_index")
         
-        # Get product
-        product = None
-        try:
-            if len(product_id) == 24:
-                product = await products_collection.find_one({"_id": ObjectId(product_id)})
-        except Exception:
-            pass
-        
-        if not product:
-            product = await products_collection.find_one({"_id": product_id})
-        
-        # ObjectId + string lookups above should be sufficient
+        product = await find_by_id(products_collection, product_id)
         
         if product:
             item_name = product["name"]
@@ -1486,16 +1431,7 @@ async def handle_view_reviews(callback: CallbackQuery):
     reviews_collection = db.reviews
     products_collection = db.products
 
-    from bson import ObjectId
-    product = None
-    try:
-        if len(product_id) == 24:
-            product = await products_collection.find_one({"_id": ObjectId(product_id)})
-    except Exception:
-        pass
-
-    if not product:
-        product = await products_collection.find_one({"_id": product_id})
+    product = await find_by_id(products_collection, product_id)
 
     if not product:
         await callback.message.answer("❌ Product not found.")
@@ -1767,20 +1703,7 @@ async def handle_add_to_cart(callback: CallbackQuery):
     products_collection = db.products
     carts_collection = db.carts
     
-    # Get product - handle both ObjectId and string IDs
-    from bson import ObjectId
-    product = None
-    
-    # First try as ObjectId (if it's a valid ObjectId string)
-    try:
-        if len(product_id) == 24:  # ObjectId hex string length
-            product = await products_collection.find_one({"_id": ObjectId(product_id)})
-    except Exception as e:
-        pass
-    
-    # If not found, try as string
-    if not product:
-        product = await products_collection.find_one({"_id": product_id})
+    product = await find_by_id(products_collection, product_id)
     
     # If still not found, try searching by string representation
     # ObjectId + string lookups above should be sufficient; no full-collection scan
@@ -2003,20 +1926,8 @@ async def handle_checkout(callback: CallbackQuery):
     product_details = []
     
     for item in cart["items"]:
-        from bson import ObjectId
-        product = None
         product_id = item["product_id"]
-        
-        try:
-            if len(product_id) == 24:
-                product = await products_collection.find_one({"_id": ObjectId(product_id)})
-        except:
-            pass
-        
-        if not product:
-            product = await products_collection.find_one({"_id": product_id})
-        
-        # ObjectId + string lookups above should be sufficient
+        product = await find_by_id(products_collection, product_id)
         
         if product:
             item_total = item["price"] * item["quantity"]
@@ -2175,20 +2086,8 @@ async def show_checkout_invoice(invoice_id: str, callback: CallbackQuery):
     
     # Display combined items
     for key, combined_item in combined_items.items():
-        from bson import ObjectId
-        product = None
         product_id = combined_item["product_id"]
-        
-        try:
-            if len(product_id) == 24:
-                product = await products_collection.find_one({"_id": ObjectId(product_id)})
-        except:
-            pass
-        
-        if not product:
-            product = await products_collection.find_one({"_id": product_id})
-        
-        # ObjectId + string lookups above should be sufficient
+        product = await find_by_id(products_collection, product_id)
         
         if product:
             product_name = product.get("name", "Unknown Product")
@@ -3428,15 +3327,7 @@ async def show_payment_invoice(invoice_id: str, callback: CallbackQuery | Messag
     # Show products
     invoice_text += "*Products:*\n"
     for item in invoice.get("items", []):
-        from bson import ObjectId
-        product = None
-        try:
-            if len(item["product_id"]) == 24:
-                product = await products_collection.find_one({"_id": ObjectId(item["product_id"])})
-        except:
-            pass
-        if not product:
-            product = await products_collection.find_one({"_id": item["product_id"]})
+        product = await find_by_id(products_collection, item["product_id"])
         
         if product:
             invoice_text += f"• {product.get('name', 'Unknown')} - {item['price']} {invoice.get('currency', 'GBP')}\n"
@@ -3541,16 +3432,8 @@ async def show_cancelled_order_invoice(invoice_id: str, callback: CallbackQuery 
     # Items list - format: "1. Product Name quantity — £price"
     from bson import ObjectId
     for idx, item in enumerate(invoice.get("items", []), 1):
-        product = None
         product_id = item.get("product_id")
-        try:
-            if product_id and len(str(product_id)) == 24:
-                product = await products_collection.find_one({"_id": ObjectId(product_id)})
-        except Exception:
-            pass
-        if not product:
-            product = await products_collection.find_one({"_id": product_id})
-        # ObjectId + string lookups above should be sufficient
+        product = await find_by_id(products_collection, product_id) if product_id else None
 
         product_name = product.get("name", "Unknown Product") if product else "Unknown Product"
         if item.get("variation_index") is not None and product:
@@ -4297,23 +4180,7 @@ async def process_checkout_with_address(callback: CallbackQuery, selected_curren
     
     orders_created = []
     for (product_id, variation_index), items in grouped_items.items():
-        # Get product - handle both ObjectId and string IDs
-        from bson import ObjectId
-        product = None
-        
-        # First try as ObjectId (if it's a valid ObjectId string)
-        try:
-            if len(product_id) == 24:  # ObjectId hex string length
-                product = await products_collection.find_one({"_id": ObjectId(product_id)})
-        except Exception as e:
-            pass
-        
-        # If not found, try as string
-        if not product:
-            product = await products_collection.find_one({"_id": product_id})
-        
-        # If still not found, try searching by string representation
-        # ObjectId + string lookups above should be sufficient
+        product = await find_by_id(products_collection, product_id)
         
         if not product:
             continue
