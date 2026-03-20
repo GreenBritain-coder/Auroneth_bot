@@ -96,6 +96,14 @@ dp.include_router(products.router)
 async def on_startup(bot: Bot):
     """Initialize on startup"""
     await connect_to_mongo()
+
+    # Create performance indexes (idempotent - safe on every startup)
+    from scripts.create_indexes import ensure_indexes
+    from database.connection import get_database as _get_db
+    try:
+        await ensure_indexes(_get_db())
+    except Exception as e:
+        print(f"Warning: Index creation had errors: {e}", flush=True)
     
     # Get or auto-create bot config in database
     bot_config = await ensure_bot_registered()
