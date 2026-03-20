@@ -77,10 +77,10 @@ async def handle_payment_webhook(request: web.Request) -> web.Response:
                 "orderId": order_id,
                 "amount": order.get("commission", 0),
                 "timestamp": datetime.utcnow()
-                }
-                await commissions_collection.insert_one(commission_record)
-            
-            # Send confirmation message to user
+            }
+            await commissions_collection.insert_one(commission_record)
+
+        # Send confirmation message to user
             try:
                 from aiogram import Bot
                 import os
