@@ -594,18 +594,6 @@ async def handle_category(callback: CallbackQuery):
             product_buttons = []
             for p in products:
                 label = p["name"]
-                bp = p.get("base_price") or p.get("price", 0)
-                curr = p.get("currency", "GBP")
-                sym = "£" if curr == "GBP" else ("$" if curr == "USD" else curr + " ")
-                pvars = p.get("variations", [])
-                if pvars:
-                    max_p = bp + max(v.get("price_modifier", 0) for v in pvars)
-                    if max_p != bp:
-                        label += f" ({sym}{bp:.2f}-{sym}{max_p:.2f})"
-                    else:
-                        label += f" ({sym}{bp:.2f})"
-                else:
-                    label += f" ({sym}{bp:.2f})"
                 product_buttons.append([InlineKeyboardButton(text=label, callback_data=f"product:{p['_id']}")])
             product_buttons.append([InlineKeyboardButton(text="⬅️ Back to Categories", callback_data="shop")])
             product_buttons.append([InlineKeyboardButton(text="📋 Back to Menu", callback_data="menu")])
@@ -707,18 +695,6 @@ async def handle_subcategory(callback: CallbackQuery):
     product_buttons = []
     for p in products:
         label = p["name"]
-        bp = p.get("base_price") or p.get("price", 0)
-        curr = p.get("currency", "GBP")
-        sym = "£" if curr == "GBP" else ("$" if curr == "USD" else curr + " ")
-        pvars = p.get("variations", [])
-        if pvars:
-            max_p = bp + max(v.get("price_modifier", 0) for v in pvars)
-            if max_p != bp:
-                label += f" ({sym}{bp:.2f}-{sym}{max_p:.2f})"
-            else:
-                label += f" ({sym}{bp:.2f})"
-        else:
-            label += f" ({sym}{bp:.2f})"
         product_buttons.append([InlineKeyboardButton(text=label, callback_data=f"product:{p['_id']}")])
     parent_category_id = (subcategory or {}).get("category_id", "")
     back_callback = f"category:{parent_category_id}" if parent_category_id else "shop"
