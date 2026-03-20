@@ -21,6 +21,34 @@ class ReviewCommentStates(StatesGroup):
     waiting_for_comment = State()
 
 
+async def safe_edit_or_send(callback: CallbackQuery, text: str, reply_markup=None, parse_mode=None):
+    """
+    Edit the current message to show text content.
+    If the current message is a photo (edit_text fails), delete it and send a new text message.
+    This prevents duplicate messages when navigating back from photo views.
+    """
+    is_fake = getattr(callback, 'id', None) is None
+    kwargs = {}
+    if reply_markup:
+        kwargs['reply_markup'] = reply_markup
+    if parse_mode:
+        kwargs['parse_mode'] = parse_mode
+
+    if is_fake:
+        await callback.message.answer(text, **kwargs)
+        return
+
+    try:
+        await callback.message.edit_text(text, **kwargs)
+    except Exception:
+        # edit_text fails on photo messages - delete and send new
+        try:
+            await callback.message.delete()
+        except Exception:
+            pass
+        await callback.message.answer(text, **kwargs)
+
+
 async def prepare_image_for_telegram(image_url: str) -> Optional[BufferedInputFile]:
     """
     Prepare image for Telegram sending.
@@ -346,78 +374,42 @@ async def show_product_quantity_interface(callback: CallbackQuery, product: dict
     # Send or edit message
     is_fake = getattr(callback, 'id', None) is None
     image_url = product.get("image_url")
-    
+
     try:
         # Check if image is base64 and prepare it
         image_file = await prepare_image_for_telegram(image_url) if image_url else None
-        
+        has_image = image_file or (image_url and image_url.strip())
+
         if is_fake:
             # For fake callbacks (from menu buttons), always send new message
-            if image_file:
+            if has_image:
+                photo = image_file if image_file else image_url
                 await callback.message.answer_photo(
-                    photo=image_file,
-                    caption=product_text,
-                    parse_mode="Markdown",
-                    reply_markup=keyboard
-                )
-            elif image_url and image_url.strip():
-                await callback.message.answer_photo(
-                    photo=image_url,
-                    caption=product_text,
-                    parse_mode="Markdown",
-                    reply_markup=keyboard
+                    photo=photo, caption=product_text,
+                    parse_mode="Markdown", reply_markup=keyboard
                 )
             else:
                 await callback.message.answer(product_text, parse_mode="Markdown", reply_markup=keyboard)
         else:
-            # For real callbacks, try to edit
-            try:
-                if image_file or (image_url and image_url.strip()):
-                    # If message has a photo, edit caption; otherwise can't edit to add photo
+            if has_image:
+                # Try to edit caption (works if current message is a photo)
+                try:
+                    await callback.message.edit_caption(
+                        caption=product_text, parse_mode="Markdown", reply_markup=keyboard
+                    )
+                except Exception:
+                    # Current message is text, not photo - delete and send photo
                     try:
-                        await callback.message.edit_caption(
-                            caption=product_text,
-                            parse_mode="Markdown",
-                            reply_markup=keyboard
-                        )
-                    except:
-                        # If edit_caption fails, send new message
-                        if image_file:
-                            await callback.message.answer_photo(
-                                photo=image_file,
-                                caption=product_text,
-                                parse_mode="Markdown",
-                                reply_markup=keyboard
-                            )
-                        elif image_url and image_url.strip():
-                            await callback.message.answer_photo(
-                                photo=image_url,
-                                caption=product_text,
-                                parse_mode="Markdown",
-                                reply_markup=keyboard
-                            )
-                        else:
-                            await callback.message.answer(product_text, parse_mode="Markdown", reply_markup=keyboard)
-                else:
-                    await callback.message.edit_text(product_text, parse_mode="Markdown", reply_markup=keyboard)
-            except:
-                # If edit fails, send new message
-                if image_file:
+                        await callback.message.delete()
+                    except Exception:
+                        pass
+                    photo = image_file if image_file else image_url
                     await callback.message.answer_photo(
-                        photo=image_file,
-                        caption=product_text,
-                        parse_mode="Markdown",
-                        reply_markup=keyboard
+                        photo=photo, caption=product_text,
+                        parse_mode="Markdown", reply_markup=keyboard
                     )
-                elif image_url and image_url.strip():
-                    await callback.message.answer_photo(
-                        photo=image_url,
-                        caption=product_text,
-                        parse_mode="Markdown",
-                        reply_markup=keyboard
-                    )
-                else:
-                    await callback.message.answer(product_text, parse_mode="Markdown", reply_markup=keyboard)
+            else:
+                await safe_edit_or_send(callback, product_text, parse_mode="Markdown", reply_markup=keyboard)
     except Exception as e:
         print(f"Error displaying product: {e}")
         import traceback
@@ -484,23 +476,10 @@ async def handle_shop_start(callback: CallbackQuery):
     
     no_categories_text = "📦 No categories available at the moment."
     if not categories:
-        if is_fake:
-            await callback.message.answer(no_categories_text)
-        else:
-            try:
-                await callback.message.edit_text(no_categories_text)
-            except Exception:
-                await callback.message.answer(no_categories_text)
+        await safe_edit_or_send(callback, no_categories_text)
         return
-    
-    if is_fake:
-        await callback.message.answer(shop_header, parse_mode="Markdown", reply_markup=keyboard)
-    else:
-        try:
-            await callback.message.edit_text(shop_header, parse_mode="Markdown", reply_markup=keyboard)
-        except Exception as e:
-            print(f"[Shop] Edit failed: {e}")
-            await callback.message.answer(shop_header, parse_mode="Markdown", reply_markup=keyboard)
+
+    await safe_edit_or_send(callback, shop_header, parse_mode="Markdown", reply_markup=keyboard)
 
 
 @router.callback_query(F.data.startswith("category:"))
@@ -571,43 +550,42 @@ async def handle_category(callback: CallbackQuery):
             except Exception:
                 category = await db.categories.find_one({"_id": category_id})
             category_name = category.get("name", "Products") if category else "Products"
-            # Show product list as buttons first (user selects one to see details)
-            product_buttons = [[InlineKeyboardButton(text=p["name"], callback_data=f"product:{p['_id']}")] for p in products]
+            # Show product list as buttons with price range
+            product_buttons = []
+            for p in products:
+                label = p["name"]
+                bp = p.get("base_price") or p.get("price", 0)
+                curr = p.get("currency", "GBP")
+                sym = "£" if curr == "GBP" else ("$" if curr == "USD" else curr + " ")
+                pvars = p.get("variations", [])
+                if pvars:
+                    max_p = bp + max(v.get("price_modifier", 0) for v in pvars)
+                    if max_p != bp:
+                        label += f" ({sym}{bp:.2f}-{sym}{max_p:.2f})"
+                    else:
+                        label += f" ({sym}{bp:.2f})"
+                else:
+                    label += f" ({sym}{bp:.2f})"
+                product_buttons.append([InlineKeyboardButton(text=label, callback_data=f"product:{p['_id']}")])
             product_buttons.append([InlineKeyboardButton(text="⬅️ Back to Categories", callback_data="shop")])
             product_buttons.append([InlineKeyboardButton(text="📋 Back to Menu", callback_data="menu")])
             list_keyboard = InlineKeyboardMarkup(inline_keyboard=product_buttons)
-            try:
-                await callback.message.edit_text(
-                    f"🛍️ *Products in {category_name}*\n\nSelect a product:",
-                    parse_mode="Markdown",
-                    reply_markup=list_keyboard
-                )
-            except Exception:
-                await callback.message.answer(
-                    f"🛍️ *Products in {category_name}*\n\nSelect a product:",
-                    parse_mode="Markdown",
-                    reply_markup=list_keyboard
-                )
+            await safe_edit_or_send(
+                callback,
+                f"🛍️ *Products in {category_name}*\n\nSelect a product:",
+                parse_mode="Markdown",
+                reply_markup=list_keyboard
+            )
             return
         back_keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="⬅️ Back to Categories", callback_data="shop")],
             [InlineKeyboardButton(text="⬅️ Back to Menu", callback_data="menu")]
         ])
-        try:
-            await callback.message.edit_text(
-                "📁 No subcategories or products available in this category.",
-                reply_markup=back_keyboard
-            )
-        except Exception as e:
-            print(f"Edit failed: {e}")
-            try:
-                await callback.message.delete()
-            except:
-                pass
-            await callback.message.answer(
-                "📁 No subcategories or products available in this category.",
-                reply_markup=back_keyboard
-            )
+        await safe_edit_or_send(
+            callback,
+            "📁 No subcategories or products available in this category.",
+            reply_markup=back_keyboard
+        )
         return
     
     # Create subcategory buttons
@@ -629,20 +607,7 @@ async def handle_category(callback: CallbackQuery):
     ])
     
     keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
-    try:
-        # Try to edit the message - this should work for inline button callbacks
-        await callback.message.edit_text("📁 *Select a Subcategory*", parse_mode="Markdown", reply_markup=keyboard)
-    except Exception as e:
-        # If edit fails, delete the old message and send a new one
-        error_msg = str(e)
-        print(f"Edit failed: {error_msg}")
-        try:
-            # Delete the message that couldn't be edited
-            await callback.message.delete()
-        except Exception as del_err:
-            print(f"Delete also failed: {del_err}")
-        # Send new message
-        await callback.message.answer("📁 *Select a Subcategory*", parse_mode="Markdown", reply_markup=keyboard)
+    await safe_edit_or_send(callback, "📁 *Select a Subcategory*", parse_mode="Markdown", reply_markup=keyboard)
 
 
 @router.callback_query(F.data.startswith("subcategory:"))
@@ -687,17 +652,9 @@ async def handle_subcategory(callback: CallbackQuery):
     }).to_list(length=50)
     
     if not products:
-        try:
-            await callback.message.edit_text("🛍️ No products available in this subcategory.")
-        except Exception as e:
-            print(f"Edit failed: {e}")
-            try:
-                await callback.message.delete()
-            except:
-                pass
-            await callback.message.answer("🛍️ No products available in this subcategory.")
+        await safe_edit_or_send(callback, "🛍️ No products available in this subcategory.")
         return
-    
+
     # First, update the navigation message to show we're viewing products
     subcategory_collection = db.subcategories
     try:
@@ -705,27 +662,36 @@ async def handle_subcategory(callback: CallbackQuery):
     except Exception:
         subcategory = await subcategory_collection.find_one({"_id": subcategory_id})
     subcategory_name = subcategory.get("name", "Products") if subcategory else "Products"
-    
-    # Show product list as buttons first (user selects one to see details)
-    product_buttons = [[InlineKeyboardButton(text=p["name"], callback_data=f"product:{p['_id']}")] for p in products]
+
+    # Show product list as buttons with price range
+    product_buttons = []
+    for p in products:
+        label = p["name"]
+        bp = p.get("base_price") or p.get("price", 0)
+        curr = p.get("currency", "GBP")
+        sym = "£" if curr == "GBP" else ("$" if curr == "USD" else curr + " ")
+        pvars = p.get("variations", [])
+        if pvars:
+            max_p = bp + max(v.get("price_modifier", 0) for v in pvars)
+            if max_p != bp:
+                label += f" ({sym}{bp:.2f}-{sym}{max_p:.2f})"
+            else:
+                label += f" ({sym}{bp:.2f})"
+        else:
+            label += f" ({sym}{bp:.2f})"
+        product_buttons.append([InlineKeyboardButton(text=label, callback_data=f"product:{p['_id']}")])
     parent_category_id = (subcategory or {}).get("category_id", "")
     back_callback = f"category:{parent_category_id}" if parent_category_id else "shop"
     back_text = "⬅️ Back to Subcategories" if parent_category_id else "⬅️ Back to Categories"
     product_buttons.append([InlineKeyboardButton(text=back_text, callback_data=back_callback)])
     product_buttons.append([InlineKeyboardButton(text="📋 Back to Menu", callback_data="menu")])
     list_keyboard = InlineKeyboardMarkup(inline_keyboard=product_buttons)
-    try:
-        await callback.message.edit_text(
-            f"🛍️ *Products in {subcategory_name}*\n\nSelect a product:",
-            parse_mode="Markdown",
-            reply_markup=list_keyboard
-        )
-    except Exception:
-        await callback.message.answer(
-            f"🛍️ *Products in {subcategory_name}*\n\nSelect a product:",
-            parse_mode="Markdown",
-            reply_markup=list_keyboard
-        )
+    await safe_edit_or_send(
+        callback,
+        f"🛍️ *Products in {subcategory_name}*\n\nSelect a product:",
+        parse_mode="Markdown",
+        reply_markup=list_keyboard
+    )
 
 
 @router.callback_query(F.data.startswith("product:"))
@@ -770,14 +736,19 @@ async def handle_product(callback: CallbackQuery):
         # No variations, show advanced quantity selection interface
         await show_product_quantity_interface(callback, product, variation_index=None)
     else:
+        # Sort variations by price_modifier (ascending) so weights appear in order (0.5g, 1g, 3.5g, etc.)
+        sorted_variations = sorted(enumerate(variations), key=lambda x: x[1].get('price_modifier', 0))
+
         # Show product details with variation options
+        currency = product.get('currency', 'GBP')
+        currency_symbol = '£' if currency == 'GBP' else '$' if currency == 'USD' else currency + ' '
         keyboard_buttons = []
-        for idx, variation in enumerate(variations):
+        for idx, variation in sorted_variations:
             variation_price = product['base_price'] + variation.get('price_modifier', 0)
             stock_info = f" (Stock: {variation.get('stock', '∞')})" if variation.get('stock') is not None else ""
             keyboard_buttons.append([
                 InlineKeyboardButton(
-                    text=f"{variation['name']} - £{variation_price:.2f}{stock_info}",
+                    text=f"{variation['name']} - {currency_symbol}{variation_price:.2f}{stock_info}",
                     callback_data=f"variation:{product_id}:{idx}"
                 )
             ])
@@ -795,8 +766,6 @@ async def handle_product(callback: CallbackQuery):
         keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
 
         # Build product detail message
-        currency = product.get('currency', 'GBP')
-        currency_symbol = '£' if currency == 'GBP' else '$' if currency == 'USD' else currency + ' '
         price_range = f"{currency_symbol}{product['base_price']:.2f}"
         if variations:
             max_price = product['base_price'] + max(v.get('price_modifier', 0) for v in variations)
@@ -815,8 +784,11 @@ async def handle_product(callback: CallbackQuery):
         image_url = product.get('image_url', '')
         try:
             if image_url:
-                from aiogram.types import InputMediaPhoto
-                await callback.message.delete()
+                # Delete old message (may be text or photo) and send photo
+                try:
+                    await callback.message.delete()
+                except Exception:
+                    pass
                 await callback.message.answer_photo(
                     photo=image_url,
                     caption=product_text,
@@ -824,13 +796,10 @@ async def handle_product(callback: CallbackQuery):
                     reply_markup=keyboard
                 )
             else:
-                await callback.message.edit_text(product_text, parse_mode="Markdown", reply_markup=keyboard)
+                await safe_edit_or_send(callback, product_text, parse_mode="Markdown", reply_markup=keyboard)
         except Exception as e:
             print(f"[Product] Image send failed: {e}, falling back to text")
-            try:
-                await callback.message.edit_text(product_text, parse_mode="Markdown", reply_markup=keyboard)
-            except:
-                await callback.message.answer(product_text, parse_mode="Markdown", reply_markup=keyboard)
+            await safe_edit_or_send(callback, product_text, parse_mode="Markdown", reply_markup=keyboard)
 
 
 @router.callback_query(F.data.startswith("variation:"))
@@ -1945,10 +1914,7 @@ async def handle_view_cart(callback: CallbackQuery):
             [InlineKeyboardButton(text="🛍️ Continue Shopping", callback_data="shop")],
             [InlineKeyboardButton(text="📋 Back to Menu", callback_data="menu")]
         ])
-        try:
-            await callback.message.edit_text("🛒 Your cart is empty.", reply_markup=keyboard)
-        except Exception:
-            await callback.message.answer("🛒 Your cart is empty.", reply_markup=keyboard)
+        await safe_edit_or_send(callback, "🛒 Your cart is empty.", reply_markup=keyboard)
         return
     
     # Build cart message
@@ -2008,33 +1974,34 @@ async def handle_view_cart(callback: CallbackQuery):
     ]
     keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
     
-    try:
-        await callback.message.edit_text(cart_text, parse_mode="Markdown", reply_markup=keyboard)
-    except:
-        await callback.message.answer(cart_text, parse_mode="Markdown", reply_markup=keyboard)
+    await safe_edit_or_send(callback, cart_text, parse_mode="Markdown", reply_markup=keyboard)
 
 
 @router.callback_query(F.data == "clear_cart")
 async def handle_clear_cart(callback: CallbackQuery):
     """Clear cart"""
     await safe_answer_callback(callback)
-    
+
     bot_config = await get_bot_config()
     if not bot_config:
         return
-    
+
     bot_id = str(bot_config["_id"])
     user_id = str(callback.from_user.id)
-    
+
     db = get_database()
     carts_collection = db.carts
-    
+
     await carts_collection.update_one(
         {"user_id": user_id, "bot_id": bot_id},
         {"$set": {"items": [], "updated_at": None}}
     )
-    
-    await callback.message.answer("🗑️ Cart cleared!")
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🛍️ Continue Shopping", callback_data="shop")],
+        [InlineKeyboardButton(text="📋 Back to Menu", callback_data="menu")]
+    ])
+    await safe_edit_or_send(callback, "🗑️ Cart cleared!", reply_markup=keyboard)
 
 
 @router.callback_query(F.data == "checkout")

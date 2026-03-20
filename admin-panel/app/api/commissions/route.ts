@@ -100,7 +100,7 @@ export async function GET(request: NextRequest) {
       const availableCommission = totalCommission;
 
       // Get commission rate from environment (default 2%)
-      const commissionRate = parseFloat(process.env.COMMISSION_RATE || '0.02') * 100; // Convert to percentage
+      const commissionRate = parseFloat(process.env.PLATFORM_COMMISSION_RATE || process.env.COMMISSION_RATE || '0.10') * 100; // Convert to percentage
 
       return NextResponse.json({
         totalEarned: totalCommission, // Total platform commission collected

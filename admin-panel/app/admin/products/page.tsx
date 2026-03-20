@@ -7,6 +7,7 @@ interface Product {
   _id: string;
   name: string;
   price: number;
+  base_price?: number;
   currency: string;
   description: string;
   bot_ids: string[];
@@ -88,7 +89,7 @@ export default function ProductsPage() {
                   <h3 className="text-lg font-medium text-gray-900">{product.name}</h3>
                   <p className="mt-1 text-sm text-gray-500">{product.description}</p>
                   <div className="mt-2 text-sm text-gray-700">
-                    <span className="font-medium">Price:</span> {product.price} {product.currency}
+                    <span className="font-medium">Price:</span> {product.base_price ?? product.price} {product.currency}
                     <span className="mx-2">•</span>
                     <span className="font-medium">Bots:</span> {product.bot_ids.length}
                   </div>

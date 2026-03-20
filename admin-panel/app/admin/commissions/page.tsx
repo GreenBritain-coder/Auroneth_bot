@@ -155,7 +155,9 @@ export default function CommissionsPage() {
   };
 
   const handleProcessPayout = async (payoutId: string) => {
-    if (!confirm('Process this payout? This will attempt to send BTC to the wallet address.')) {
+    const payoutEntry = payouts.find(p => p._id === payoutId);
+    const payoutCurrency = payoutEntry?.currency || 'crypto';
+    if (!confirm(`Process this payout? This will attempt to send ${payoutCurrency} to the wallet address.`)) {
       return;
     }
 
@@ -504,7 +506,7 @@ export default function CommissionsPage() {
                       </td>
                     )}
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                      {payout.amount.toFixed(8)} BTC
+                      {payout.amount.toFixed(8)} {payout.currency || 'BTC'}
                     </td>
                     <td className="px-6 py-4 text-sm text-gray-500 font-mono">
                       {payout.walletAddress || 'N/A'}

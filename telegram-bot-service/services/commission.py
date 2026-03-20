@@ -3,7 +3,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-COMMISSION_RATE = float(os.getenv("COMMISSION_RATE", "0.02"))  # Default 2%
+COMMISSION_RATE = float(os.getenv("PLATFORM_COMMISSION_RATE", os.getenv("COMMISSION_RATE", "0.10")))  # Default 10%
 
 
 def calculate_commission(amount: float, rate: float = None) -> float:
