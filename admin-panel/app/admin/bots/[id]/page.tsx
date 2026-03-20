@@ -652,7 +652,7 @@ export default function EditBotPage() {
             <div className="flex flex-col lg:flex-row gap-6">
               {/* Button Builder */}
               <div className="flex-1 min-w-0">
-                {formData.custom_buttons.filter(b => b.type !== 'system').length === 0 && (
+                {formData.custom_buttons.filter(b => !(['shop', 'orders', 'view_wishlist', 'view_cart', 'contact', 'pgp', 'about', 'view_all_reviews'].includes((b as any).action || ''))).length === 0 && (
                   <div className="text-center py-8 border-2 border-dashed border-gray-300 rounded-lg">
                     <p className="text-gray-500">No custom buttons configured. Click &quot;Add Button&quot; to create one.</p>
                   </div>
@@ -660,7 +660,7 @@ export default function EditBotPage() {
 
                 <div className="space-y-1">
                   {formData.custom_buttons
-                    .filter(b => b.type !== 'system')
+                    .filter(b => !(['shop', 'orders', 'view_wishlist', 'view_cart', 'contact', 'pgp', 'about', 'view_all_reviews'].includes((b as any).action || '')))
                     .sort((a, b) => a.order - b.order)
                     .map((btn, index) => {
                       const isSystem = btn.type === 'system';

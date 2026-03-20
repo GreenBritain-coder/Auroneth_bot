@@ -45,7 +45,7 @@ async def build_menu_rows(bot_config: dict, user_id: str, bot_id: str) -> list:
         if b.get("enabled", True) and b.get("action") not in FIXED_SYSTEM_ACTIONS
     ]
     # Legacy main_buttons fallback
-    if not custom:
+    if not custom and not custom_buttons:
         main_buttons = bot_config.get("main_buttons", [])
         main_buttons = [btn for btn in main_buttons if btn and btn.strip()] if isinstance(main_buttons, list) else []
         system_names = {"shop", "orders", "wishlist", "cart", "contact", "about", "reviews", "pgp"}
