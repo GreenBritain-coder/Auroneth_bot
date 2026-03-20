@@ -372,18 +372,13 @@ async def show_welcome_message(message: Message, bot_config: dict, secret_phrase
     
     welcome_message = "\n".join(welcome_parts)
     
-    # Always remove reply keyboard on /start
-    reply_keyboard = ReplyKeyboardRemove()
-    
     # Create inline keyboard with menu button
     inline_keyboard = InlineKeyboardMarkup(inline_keyboard=[[
         InlineKeyboardButton(text="📋 Open Menu", callback_data="menu")
     ]])
-    
-    # Send welcome message
-    await message.answer(welcome_message, reply_markup=reply_keyboard)
-    # Send menu button separately
-    await message.answer("👇 Choose an option:", reply_markup=inline_keyboard)
+
+    # Send welcome message with inline keyboard attached
+    await message.answer(welcome_message, reply_markup=inline_keyboard)
 
 
 @router.callback_query(F.data == "menu")
