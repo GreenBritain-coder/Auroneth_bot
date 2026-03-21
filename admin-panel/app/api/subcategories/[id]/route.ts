@@ -71,25 +71,24 @@ export async function PATCH(
       return NextResponse.json({ error: 'Subcategory not found' }, { status: 404 });
     }
 
+    const data = await request.json();
+
     if (payload.role !== 'super-admin') {
       const { Bot } = await import('../../../../lib/models');
       const userBots = await Bot.find({ owner: payload.userId });
       const userBotIds = userBots.map(b => b._id.toString());
-      
+
       const subcategoryBotIds = (existingSubcategory.bot_ids || []).map((id: any) => id.toString());
       const hasAccess = subcategoryBotIds.some((id: string) => userBotIds.includes(id));
-      
+
       if (!hasAccess) {
         return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
       }
-      
-      const data = await request.json();
+
       if (data.bot_ids && Array.isArray(data.bot_ids)) {
         data.bot_ids = data.bot_ids.filter((id: string) => userBotIds.includes(id));
       }
     }
-
-    const data = await request.json();
     const subcategory = await Subcategory.findByIdAndUpdate(
       params.id,
       { $set: data },
