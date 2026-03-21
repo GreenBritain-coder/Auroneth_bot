@@ -68,9 +68,11 @@ async def handle_shop_start(callback: CallbackQuery):
     # Check if this is a fake callback (from menu button) or real callback (from inline button)
     is_fake = getattr(callback, 'id', None) is None
 
-    no_categories_text = "📦 No categories available at the moment."
     if not categories:
-        await safe_edit_or_send(callback, no_categories_text)
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="📋 Back to Menu", callback_data="menu")]
+        ])
+        await safe_edit_or_send(callback, "📦 No categories available at the moment.", reply_markup=keyboard)
         return
 
     await safe_edit_or_send(callback, shop_header, parse_mode="Markdown", reply_markup=keyboard)
@@ -234,7 +236,19 @@ async def handle_subcategory(callback: CallbackQuery):
     }).to_list(length=50)
 
     if not products:
-        await safe_edit_or_send(callback, "🛍️ No products available in this subcategory.")
+        # Get category_id from the subcategory so back button works
+        try:
+            subcategory_collection = db.subcategories
+            subcat = await subcategory_collection.find_one({"_id": ObjectId(subcategory_id)})
+            cat_id = str(subcat.get("category_id", "")) if subcat else ""
+        except Exception:
+            cat_id = ""
+        back_data = f"category:{cat_id}" if cat_id else "shop"
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="◀️ Back", callback_data=back_data)],
+            [InlineKeyboardButton(text="📋 Back to Menu", callback_data="menu")]
+        ])
+        await safe_edit_or_send(callback, "🛍️ No products available in this subcategory.", reply_markup=keyboard)
         return
 
     # First, update the navigation message to show we're viewing products
