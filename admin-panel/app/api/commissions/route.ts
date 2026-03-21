@@ -22,7 +22,7 @@ export async function GET(request: NextRequest) {
     if (payload.role === 'super-admin') {
       // Super-admin: Show total platform commission collected from all bot owners
       const allOrders = await Order.find({
-        paymentStatus: 'paid'
+        paymentStatus: { $in: ['paid', 'shipped', 'completed'] }
       }).lean();
 
       // Calculate total platform commission collected
@@ -127,7 +127,7 @@ export async function GET(request: NextRequest) {
       // Get all paid orders for user's bots
       const orders = await Order.find({
         botId: { $in: userBotIds },
-        paymentStatus: 'paid'
+        paymentStatus: { $in: ['paid', 'shipped', 'completed'] }
       }).lean();
 
       // Calculate earnings per currency: order amount - commission (automatically deducted)
