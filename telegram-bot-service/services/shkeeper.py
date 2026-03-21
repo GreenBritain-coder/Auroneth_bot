@@ -27,7 +27,7 @@ FALLBACK_CRYPTO_LIST = [
     {"code": "ETH", "name": "Ethereum"},
     {"code": "LTC", "name": "Litecoin"},
     {"code": "DOGE", "name": "Dogecoin"},
-    {"code": "USDT", "name": "Tether (USDT)"},  # Will map to ETH-USDT
+    {"code": "USDT", "name": "Tether (USDT)"},  # TRC20 via tron-shkeeper
     {"code": "USDC", "name": "USD Coin (USDC)"},  # Will map to ETH-USDC
     {"code": "XMR", "name": "Monero"},
     {"code": "BNB", "name": "Binance Coin"},
@@ -217,8 +217,8 @@ def create_invoice(amount: float, currency: str, order_id: str, buyer_email: str
         "XMR": "XMR",
         "XRP": "XRP",
         "ETH": "ETH",
-        "USDT": "ETH-USDT",  # Default to ERC20 USDT
-        "USDC": "ETH-USDC",  # Default to ERC20 USDC
+        "USDT": "USDT",  # TRC20 USDT via tron-shkeeper
+        "USDC": "USDC",  # TRC20 USDC via tron-shkeeper
         "BNB": "BNB",
         "BNB-USDT": "BNB-USDT",
         "BNB-USDC": "BNB-USDC",
@@ -541,6 +541,8 @@ def create_invoice(amount: float, currency: str, order_id: str, buyer_email: str
             friendly_names = {
                 "BTC": "Bitcoin",
                 "ETH": "Ethereum",
+                "USDT": "TRC20 USDT",
+                "USDC": "TRC20 USDC",
                 "ETH-USDT": "ERC20 USDT",
                 "ETH-USDC": "ERC20 USDC",
                 "BNB": "BNB",
@@ -805,8 +807,8 @@ def create_payout(
         "XMR": "XMR",
         "XRP": "XRP",
         "ETH": "ETH",
-        "USDT": "ETH-USDT",
-        "USDC": "ETH-USDC",
+        "USDT": "USDT",
+        "USDC": "USDC",
         "BNB": "BNB",
         "BNB-USDT": "BNB-USDT",
         "BNB-USDC": "BNB-USDC",
@@ -861,7 +863,7 @@ def get_payout_status(currency: str, task_id: str) -> Dict:
         return {"success": False, "error": "SHKeeper payout not configured."}
     currency_map = {
         "BTC": "BTC", "LTC": "LTC", "DOGE": "DOGE", "XMR": "XMR",
-        "ETH": "ETH", "USDT": "ETH-USDT", "USDC": "ETH-USDC",
+        "ETH": "ETH", "USDT": "USDT", "USDC": "USDC",
         "BNB": "BNB", "TRX": "TRX", "XRP": "XRP", "AVAX": "AVAX", "MATIC": "MATIC",
     }
     crypto_name = currency_map.get(currency.upper(), currency.upper())
