@@ -197,14 +197,16 @@ export default function NewProductPage() {
 
   const addVariation = () => {
     if (!newVariation.name || newVariation.price_modifier === '') {
-      alert('Please fill in variation name and price modifier');
+      alert('Please fill in variation name and price');
       return;
     }
+    const enteredPrice = parseFloat(newVariation.price_modifier) || 0;
+    const basePrice = parseFloat(formData.base_price) || 0;
     setFormData(prev => ({
       ...prev,
       variations: [...prev.variations, {
         name: newVariation.name,
-        price_modifier: parseFloat(newVariation.price_modifier) || 0,
+        price_modifier: enteredPrice - basePrice,
         stock: newVariation.stock ? parseInt(newVariation.stock) : undefined,
       }],
     }));
@@ -427,7 +429,7 @@ export default function NewProductPage() {
                   <div>
                     <span className="font-medium">{variation.name}</span>
                     <span className="ml-2 text-sm text-gray-600">
-                      ({variation.price_modifier >= 0 ? '+' : ''}{variation.price_modifier} {formData.currency})
+                      ({(parseFloat(formData.base_price) || 0) + variation.price_modifier} {formData.currency})
                     </span>
                     {variation.stock !== undefined && (
                       <span className="ml-2 text-sm text-gray-500">Stock: {variation.stock}</span>
@@ -454,7 +456,7 @@ export default function NewProductPage() {
                 <input
                   type="number"
                   step="0.01"
-                  placeholder="Price modifier"
+                  placeholder="Price for this option"
                   className="border border-gray-300 rounded-md px-2 py-1 text-sm"
                   value={newVariation.price_modifier}
                   onChange={(e) => setNewVariation({ ...newVariation, price_modifier: e.target.value })}
@@ -475,7 +477,7 @@ export default function NewProductPage() {
                 </button>
               </div>
               <p className="text-xs text-gray-500">
-                Variations allow different sizes/options. Price modifier is added to base price. Leave stock empty for unlimited.
+                Variations allow different sizes/options. Enter the full price for each option. Leave stock empty for unlimited.
               </p>
             </div>
           </div>
