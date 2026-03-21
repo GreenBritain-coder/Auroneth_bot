@@ -7,6 +7,26 @@ interface User {
   secret_phrase: string;
   first_bot_id: string;
   created_at: string;
+  last_seen?: string;
+  username?: string;
+  first_name?: string;
+  last_name?: string;
+  avatar_url?: string;
+}
+
+function timeAgo(dateStr: string | undefined): string {
+  if (!dateStr) return 'Never';
+  const now = Date.now();
+  const then = new Date(dateStr).getTime();
+  const diff = now - then;
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return 'Just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 30) return `${days}d ago`;
+  return new Date(dateStr).toLocaleDateString();
 }
 
 export default function UsersPage() {
@@ -40,23 +60,40 @@ export default function UsersPage() {
     const term = searchTerm.toLowerCase();
     return (
       user._id.toLowerCase().includes(term) ||
-      user.secret_phrase.toLowerCase().includes(term)
+      (user.secret_phrase || '').toLowerCase().includes(term) ||
+      (user.username || '').toLowerCase().includes(term) ||
+      (user.first_name || '').toLowerCase().includes(term) ||
+      (user.last_name || '').toLowerCase().includes(term)
     );
   });
 
   if (loading) {
-    return <div className="text-center py-8">Loading...</div>;
+    return (
+      <div className="flex items-center justify-center py-16">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
+      </div>
+    );
   }
 
   return (
-    <div>
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Users & Secret Phrases</h1>
-        <div className="w-64">
+    <div className="px-4 sm:px-0">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Users & Secret Phrases</h1>
+          <p className="mt-1 text-sm text-gray-500">
+            {filteredUsers.length} {filteredUsers.length === 1 ? 'user' : 'users'}
+            {searchTerm ? ` (filtered from ${users.length})` : ''}
+          </p>
+        </div>
+        <div className="w-full sm:w-72 relative">
+          <svg xmlns="http://www.w3.org/2000/svg" className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" viewBox="0 0 20 20" fill="currentColor">
+            <path fillRule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clipRule="evenodd" />
+          </svg>
           <input
             type="text"
-            placeholder="Search by user ID or phrase..."
-            className="block w-full border border-gray-300 rounded-md px-3 py-2"
+            placeholder="Search users, phrases, names..."
+            className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
@@ -64,58 +101,69 @@ export default function UsersPage() {
       </div>
 
       {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded mb-4">
-          {error}
-        </div>
+        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-4">{error}</div>
       )}
 
-      <div className="bg-white shadow overflow-hidden sm:rounded-md">
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Telegram User ID
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Secret Phrase
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  First Bot ID
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Created At
-                </th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {filteredUsers.map((user) => (
-                <tr key={user._id}>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-gray-900">
-                    {user._id}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-indigo-600">
-                    {user.secret_phrase}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-gray-500">
-                    {user.first_bot_id.substring(0, 8)}...
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {new Date(user.created_at).toLocaleDateString()}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      {/* User List */}
+      <div className="bg-white shadow-sm rounded-xl border border-gray-200 overflow-hidden">
+        <div className="divide-y divide-gray-100">
+          {filteredUsers.map((user) => {
+            const displayName = [user.first_name, user.last_name].filter(Boolean).join(' ') || null;
+
+            return (
+              <div key={user._id} className="px-4 py-3 sm:px-6 flex items-center gap-4 hover:bg-gray-50">
+                {/* Avatar */}
+                <div className="flex-shrink-0">
+                  {user.avatar_url ? (
+                    <img
+                      src={user.avatar_url}
+                      alt=""
+                      className="h-10 w-10 rounded-full object-cover"
+                      onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; (e.target as HTMLImageElement).nextElementSibling?.classList.remove('hidden'); }}
+                    />
+                  ) : null}
+                  <div className={`h-10 w-10 rounded-full bg-indigo-100 flex items-center justify-center ${user.avatar_url ? 'hidden' : ''}`}>
+                    <span className="text-indigo-600 font-semibold text-sm">
+                      {(user.first_name || user._id).charAt(0).toUpperCase()}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Info */}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {displayName && (
+                      <span className="font-medium text-gray-900 text-sm">{displayName}</span>
+                    )}
+                    {user.username && (
+                      <span className="text-xs text-gray-400">@{user.username}</span>
+                    )}
+                    {!displayName && !user.username && (
+                      <span className="font-mono text-sm text-gray-700">{user._id}</span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-3 mt-0.5 flex-wrap">
+                    <span className="text-sm font-semibold text-indigo-600">{user.secret_phrase}</span>
+                    <span className="text-xs text-gray-400">ID: {user._id}</span>
+                  </div>
+                </div>
+
+                {/* Meta */}
+                <div className="hidden sm:flex flex-col items-end text-xs text-gray-400 flex-shrink-0">
+                  <span>Seen {timeAgo(user.last_seen)}</span>
+                  <span>Joined {new Date(user.created_at).toLocaleDateString()}</span>
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
 
       {filteredUsers.length === 0 && !loading && (
-        <div className="text-center py-8 text-gray-500">
-          {searchTerm ? 'No users found matching your search.' : 'No users found.'}
+        <div className="text-center py-12 text-gray-500">
+          {searchTerm ? 'No users match your search.' : 'No users found.'}
         </div>
       )}
     </div>
   );
 }
-

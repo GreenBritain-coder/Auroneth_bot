@@ -44,11 +44,24 @@ async def cmd_start(message: Message, state: FSMContext):
     if user and user.get("secret_phrase"):
         # User already has a secret phrase
         secret_phrase = user["secret_phrase"]
-        # Update last_seen timestamp
+        # Update last_seen timestamp and profile data
         from datetime import datetime
+        user_update = {
+            "last_seen": datetime.utcnow(),
+            "username": message.from_user.username or "",
+            "first_name": message.from_user.first_name or "",
+            "last_name": message.from_user.last_name or "",
+        }
+        try:
+            photos = await message.bot.get_user_profile_photos(message.from_user.id, limit=1)
+            if photos.total_count > 0:
+                file = await message.bot.get_file(photos.photos[0][0].file_id)
+                user_update["avatar_url"] = f"https://api.telegram.org/file/bot{message.bot.token}/{file.file_path}"
+        except Exception:
+            pass
         await users_collection.update_one(
             {"_id": telegram_user_id},
-            {"$set": {"last_seen": datetime.utcnow()}}
+            {"$set": user_update}
         )
         
         # Check if user has completed verification
@@ -114,6 +127,16 @@ async def handle_secret_phrase_input(message: Message, state: FSMContext):
     }
     
     user_doc["last_seen"] = datetime.utcnow()
+    user_doc["username"] = message.from_user.username or ""
+    user_doc["first_name"] = message.from_user.first_name or ""
+    user_doc["last_name"] = message.from_user.last_name or ""
+    try:
+        photos = await message.bot.get_user_profile_photos(message.from_user.id, limit=1)
+        if photos.total_count > 0:
+            file = await message.bot.get_file(photos.photos[0][0].file_id)
+            user_doc["avatar_url"] = f"https://api.telegram.org/file/bot{message.bot.token}/{file.file_path}"
+    except Exception:
+        pass
     await users_collection.update_one(
         {"_id": telegram_user_id},
         {"$set": user_doc},

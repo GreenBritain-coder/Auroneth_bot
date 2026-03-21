@@ -392,6 +392,10 @@ export interface IUser extends Document {
   created_at: Date;
   verification_completed?: boolean; // Track if user completed verification flow
   last_seen?: Date; // Last seen timestamp
+  username?: string;
+  first_name?: string;
+  last_name?: string;
+  avatar_url?: string;
 }
 
 const UserSchema = new Schema<IUser>({
