@@ -496,11 +496,13 @@ async def handle_checkout_payment(callback: CallbackQuery):
                 ])
         print(f"[Payment Selection] Showing filtered currencies: {[c['code'] for c in filtered_currencies]}")
     else:
-        # Fall back to SHKeeper if CryptAPI not configured
+        # Use bot's configured payment methods from database
+        from utils.bot_config import get_bot_config
+        bot_config = await get_bot_config()
+        allowed_currencies = bot_config.get("payment_methods", ["BTC", "LTC"]) if bot_config else ["BTC", "LTC"]
+
         from services.shkeeper import FALLBACK_CRYPTO_LIST
-        # Filter to only show BTC and LTC
-        allowed_currencies = ["BTC", "LTC"]
-        filtered_currencies = [c for c in FALLBACK_CRYPTO_LIST if c.get("code", "").upper() in allowed_currencies]
+        filtered_currencies = [c for c in FALLBACK_CRYPTO_LIST if c.get("code", "").upper() in [ac.upper() for ac in allowed_currencies]]
 
         for crypto_item in filtered_currencies:
             crypto_code = crypto_item.get("code", "")
@@ -544,14 +546,16 @@ async def handle_checkout_payment(callback: CallbackQuery):
             # Keep showing fallback list if SHKeeper fails
             return
 
-        # If SHKeeper returned successfully and has different options, update the message
+        # If SHKeeper returned successfully, update with only bot's allowed payment methods
         if crypto_result.get("success") and not crypto_result.get("fallback"):
-            # SHKeeper returned real data, update the options
             keyboard_buttons = []
             crypto_list = crypto_result.get("crypto_list", [])
             if crypto_list:
-                print(f"Found {len(crypto_list)} cryptocurrencies from SHKeeper, updating payment options")
-                for crypto_info in crypto_list[:10]:
+                # Filter by bot's configured payment methods
+                allowed_upper = [ac.upper() for ac in allowed_currencies]
+                filtered_list = [c for c in crypto_list if c.get("name", "").upper() in allowed_upper]
+                print(f"Found {len(crypto_list)} from SHKeeper, filtered to {len(filtered_list)} by bot config: {allowed_upper}")
+                for crypto_info in filtered_list:
                     crypto_name = crypto_info.get("name", "")
                     display_name = crypto_info.get("display_name", crypto_name)
                     if crypto_name:
