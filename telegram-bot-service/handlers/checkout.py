@@ -935,15 +935,8 @@ async def handle_confirm_checkout(callback: CallbackQuery):
 
         return order_items
 
-    # Prepare currency conversion task (run in executor since it's blocking)
+    # No currency conversion needed - send original fiat amount to SHKeeper
     async def convert_currency():
-        if invoice_currency.upper() != "USD":
-            loop = asyncio.get_event_loop()
-            converted_usd = await loop.run_in_executor(
-                None,
-                lambda: convert_amount(combined_amount, invoice_currency, "USD")
-            )
-            return converted_usd if converted_usd else combined_amount
         return combined_amount
 
     # Run both tasks in parallel
@@ -957,11 +950,7 @@ async def handle_confirm_checkout(callback: CallbackQuery):
     print(f"[Checkout] === AMOUNT CALCULATION DEBUG ===")
     print(f"[Checkout] Invoice currency: {invoice_currency}")
     print(f"[Checkout] Combined amount (final_total): {combined_amount}")
-    if invoice_currency.upper() != "USD":
-        print(f"[Checkout] Conversion result: {combined_amount} {invoice_currency} -> {amount_for_shkeeper} USD")
-    else:
-        print(f"[Checkout] Already in USD: {combined_amount} USD")
-    print(f"[Checkout] === FINAL AMOUNT FOR SHKEEPER: {amount_for_shkeeper} USD ===")
+    print(f"[Checkout] === FINAL AMOUNT FOR SHKEEPER: {amount_for_shkeeper} {invoice_currency} ===")
 
     commission = calculate_commission(combined_amount)
 
@@ -1059,13 +1048,13 @@ async def handle_confirm_checkout(callback: CallbackQuery):
         invoice_result = await loop.run_in_executor(
             None,
             lambda: create_payment_invoice(
-                amount=amount_for_shkeeper,  # USD amount (already converted)
+                amount=amount_for_shkeeper,
                 currency=selected_currency,
-                order_id=invoice_id,  # Use invoice_id as order_id
+                order_id=invoice_id,
                 buyer_email="",
-                fiat_currency="USD",  # amount_for_shkeeper is already in USD
-                fiat_amount=amount_for_shkeeper,  # USD amount
-                bot_config=bot_config  # Pass bot config for webhook URL
+                fiat_currency=invoice_currency.upper(),
+                fiat_amount=amount_for_shkeeper,
+                bot_config=bot_config
             )
         )
     except Exception as e:
@@ -2167,18 +2156,8 @@ async def process_checkout_with_address(callback: CallbackQuery, selected_curren
         total_quantity = sum(item["quantity"] for item in items)
         total_item_price = sum(item["price"] * item["quantity"] for item in items)
 
-        item_currency = product.get("currency", "BTC")
-        if item_currency.upper() != selected_currency:
-            converted_item = convert_amount(total_item_price, item_currency, selected_currency)
-            if converted_item:
-                if selected_currency == "BTC":
-                    order_total = round(converted_item, 8)
-                else:
-                    order_total = round(converted_item, 2)
-            else:
-                order_total = total_item_price
-        else:
-            order_total = total_item_price
+        item_currency = product.get("currency", "GBP")
+        order_total = round(total_item_price, 2)
 
         commission = calculate_commission(order_total)
 
@@ -2236,7 +2215,7 @@ async def process_checkout_with_address(callback: CallbackQuery, selected_curren
             currency=selected_currency,
             order_id=order["_id"],
             buyer_email="",
-            fiat_currency=currency,
+            fiat_currency=item_currency.upper(),
             fiat_amount=order["amount"],
             bot_config=bot_config
         )
@@ -2266,7 +2245,7 @@ async def process_checkout_with_address(callback: CallbackQuery, selected_curren
                 invoice_message += f"Quantity: {order['quantity']}\n"
 
             if invoice_result.get('provider') == 'shkeeper':
-                invoice_message += f"Amount: ${order['amount']} USD\n"
+                invoice_message += f"Amount: £{order['amount']} GBP\n"
                 invoice_message += f"Pay: {crypto_amount} {display_currency}\n\n"
             else:
                 invoice_message += f"Amount: {crypto_amount} {display_currency}\n\n"

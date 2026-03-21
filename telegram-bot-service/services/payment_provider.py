@@ -31,6 +31,7 @@ def create_payment_invoice(amount: float, currency: str, order_id: str, buyer_em
                 currency=currency,
                 order_id=order_id,
                 buyer_email=buyer_email,
+                fiat_currency=fiat_currency,
             )
             if result.get("success"):
                 result["provider"] = "shkeeper"

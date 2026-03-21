@@ -180,17 +180,18 @@ def get_available_cryptocurrencies() -> Dict:
     }
 
 
-def create_invoice(amount: float, currency: str, order_id: str, buyer_email: str = "") -> Dict:
+def create_invoice(amount: float, currency: str, order_id: str, buyer_email: str = "", fiat_currency: str = "USD") -> Dict:
     """
     Create payment invoice via SHKeeper API
     Returns invoice with payment address and QR code
-    
+
     Args:
-        amount: Amount in USD (fiat currency)
+        amount: Amount in fiat currency
         currency: Cryptocurrency code (e.g., "BTC", "ETH", "ETH-USDT", "BNB-USDC")
         order_id: Unique order/invoice ID
         buyer_email: Optional buyer email
-    
+        fiat_currency: Fiat currency code (e.g., "USD", "GBP", "EUR")
+
     Returns:
         Dict with success status, payment address, QR code, etc.
     """
@@ -245,17 +246,16 @@ def create_invoice(amount: float, currency: str, order_id: str, buyer_email: str
         # Build callback URL for webhooks
         callback_url = f"{WEBHOOK_URL}/payment/shkeeper-webhook"
         
-        # CRITICAL: Ensure amount is a valid number and in USD
         # Log the exact amount being sent
         print(f"[SHKeeper create_invoice] === PAYMENT REQUEST DEBUG ===")
         print(f"[SHKeeper create_invoice] Order ID: {order_id}")
-        print(f"[SHKeeper create_invoice] Amount received: {amount} (type: {type(amount)})")
+        print(f"[SHKeeper create_invoice] Amount received: {amount} {fiat_currency} (type: {type(amount)})")
         print(f"[SHKeeper create_invoice] Currency: {crypto_name}")
-        
-        # Validate amount is reasonable (should be USD amount, typically < 10000 for most orders)
+
+        # Validate amount is reasonable
         if isinstance(amount, (int, float)):
             if amount > 10000:
-                print(f"[SHKeeper create_invoice] WARNING: Amount {amount} seems too large for USD! This might be an error.")
+                print(f"[SHKeeper create_invoice] WARNING: Amount {amount} seems too large! This might be an error.")
             if amount < 0:
                 print(f"[SHKeeper create_invoice] ERROR: Amount {amount} is negative!")
                 return {
@@ -265,7 +265,7 @@ def create_invoice(amount: float, currency: str, order_id: str, buyer_email: str
         
         payload = {
             "external_id": str(order_id),
-            "fiat": "USD",
+            "fiat": fiat_currency,
             "amount": str(amount),  # SHKeeper expects string
             "callback_url": callback_url
         }
