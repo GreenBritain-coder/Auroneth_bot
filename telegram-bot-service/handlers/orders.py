@@ -530,10 +530,36 @@ async def handle_order_detail(callback: CallbackQuery):
             found_variant = variant
             break
 
+    # Fallback: search by order's invoiceId field (external payment provider ID)
     if not invoice and order:
         invoice = await invoices_collection.find_one({"invoice_id": str(order.get("_id"))})
         if invoice:
             found_variant = str(order.get("_id"))
+
+    # Fallback: search by order's invoiceId (payment_invoice_id on the invoice)
+    if not invoice and order and order.get("invoiceId"):
+        invoice = await invoices_collection.find_one({"payment_invoice_id": order["invoiceId"]})
+        if invoice:
+            found_variant = invoice.get("invoice_id", order_id)
+
+    # Fallback: search invoices by user_id + matching items (last resort)
+    if not invoice and order:
+        user_id = order.get("userId")
+        if user_id:
+            # Try to find any invoice for this user that matches the order timestamp
+            candidate = await invoices_collection.find_one({
+                "user_id": user_id,
+                "invoice_id": {"$exists": True},
+                "$or": [
+                    {"status": "Pending Payment"},
+                    {"status": "Pending Checkout"},
+                ]
+            }, sort=[("created_at", -1)])
+            if candidate and str(candidate.get("invoice_id")) != str(order.get("_id")):
+                # Verify it's likely the same order by checking amount
+                if candidate.get("total") == order.get("amount"):
+                    invoice = candidate
+                    found_variant = candidate.get("invoice_id", order_id)
 
     if invoice:
         invoice_id = invoice.get("invoice_id", found_variant or order_id)
@@ -574,7 +600,10 @@ async def handle_order_detail(callback: CallbackQuery):
             await show_checkout_invoice(invoice_id, callback)
     else:
         error_msg = f"\u274c Invoice not found for order {order_id}."
-        await callback.message.answer(error_msg, parse_mode="Markdown")
+        try:
+            await callback.message.edit_text(error_msg, parse_mode="Markdown")
+        except Exception:
+            await callback.message.answer(error_msg, parse_mode="Markdown")
 
 
 # ---------- Reorder from past purchase ----------
