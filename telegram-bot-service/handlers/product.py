@@ -41,21 +41,28 @@ async def show_product_quantity_interface(callback: CallbackQuery, product: dict
         except (ValueError, TypeError):
             actual_variation_index = None
 
-    # Get current quantity or default
-    if current_quantity is None:
-        current_quantity = calculate_increment_amount(product, actual_variation_index)
-
     # Calculate price
     base_price = product.get('base_price') or product.get('price', 0)
     variation = None
+    has_variations = bool(product.get("variations"))
     if actual_variation_index is not None:
         variations = product.get("variations", [])
         if actual_variation_index < len(variations):
             variation = variations[actual_variation_index]
             base_price += variation.get('price_modifier', 0)
 
-    unit = product.get("unit", "pcs")
-    increment = calculate_increment_amount(product, variation_index)
+    # When variations exist, quantity = number of units (1, 2, 3...) not weight increments
+    if has_variations and variation:
+        if current_quantity is None:
+            current_quantity = 1
+        increment = 1
+        unit = "pcs"
+    else:
+        if current_quantity is None:
+            current_quantity = calculate_increment_amount(product, actual_variation_index)
+        unit = product.get("unit", "pcs")
+        increment = calculate_increment_amount(product, variation_index)
+
     total_price = base_price * current_quantity
 
     # Get cart total
@@ -105,9 +112,10 @@ async def show_product_quantity_interface(callback: CallbackQuery, product: dict
     price_display = f"{total_price:.2f}" if currency == "GBP" else f"{total_price:.8f}"
 
     # Row 1: Quantity adjustment
+    qty_label = f"{qty_display}x {variation['name']}" if (has_variations and variation) else f"{qty_display} {unit}"
     keyboard_buttons.append([
         InlineKeyboardButton(text=f"➖ {increment_str}", callback_data=f"adjust_qty:{product_id}:{var_idx_str}:down:{qty_str}"),
-        InlineKeyboardButton(text=f"  {qty_display} {unit}  ", callback_data=f"manual_qty:{product_id}:{var_idx_str}"),
+        InlineKeyboardButton(text=f"  {qty_label}  ", callback_data=f"manual_qty:{product_id}:{var_idx_str}"),
         InlineKeyboardButton(text=f"➕ {increment_str}", callback_data=f"adjust_qty:{product_id}:{var_idx_str}:up:{qty_str}"),
     ])
 
@@ -305,8 +313,12 @@ async def handle_quantity_adjust(callback: CallbackQuery):
         except (ValueError, TypeError):
             variation_index = None
 
-    # Calculate increment
-    increment = calculate_increment_amount(product, variation_index)
+    # Calculate increment — when variations exist, step by 1 unit
+    has_variations = bool(product.get("variations"))
+    if has_variations and variation_index is not None:
+        increment = 1
+    else:
+        increment = calculate_increment_amount(product, variation_index)
 
     # Adjust quantity
     if direction == "up":
