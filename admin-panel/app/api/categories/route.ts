@@ -21,7 +21,7 @@ export async function GET(request: NextRequest) {
     await connectDB();
     
     // Super-admins see all categories, bot-owners only see categories for their bots
-    let categories;
+    let categories: any[];
     if (payload.role === 'super-admin') {
       categories = await Category.find({}).sort({ order: 1 }).lean();
     } else {
