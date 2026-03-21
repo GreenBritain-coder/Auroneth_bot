@@ -36,8 +36,8 @@ export async function GET(request: NextRequest) {
       const userBotIds = userBots.map(b => b._id.toString());
       
       if (userBotIds.length === 0) {
-        // No bots found - show all categories as fallback so bot-owner can still create products
-        categories = await Category.find({}).sort({ order: 1 }).lean();
+        // No bots found - show empty list (bot-owner must have a bot first)
+        categories = [];
       } else {
         // Match category bot_ids (may be stored as string or ObjectId)
         const matchIds: (string | mongoose.Types.ObjectId)[] = [...userBotIds];
@@ -50,15 +50,8 @@ export async function GET(request: NextRequest) {
         });
         
         categories = await Category.find({
-          $or: [
-            { bot_ids: { $in: matchIds } },
-            { bot_ids: { $size: 0 } }  // Include unassigned categories
-          ]
+          bot_ids: { $in: matchIds }
         }).sort({ order: 1 }).lean();
-        // Fallback: if still empty, show all categories (e.g. owner/bot_id format mismatch)
-        if (categories.length === 0) {
-          categories = await Category.find({}).sort({ order: 1 }).lean();
-        }
       }
     }
     
