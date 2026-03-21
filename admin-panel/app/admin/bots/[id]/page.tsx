@@ -667,9 +667,11 @@ export default function EditBotPage() {
                       const isUndeletable = !!(btn as any).undeletable;
                       const buttonKey = btn.label.replace(/[^\w\s]/g, '').toLowerCase().trim().replace(/\s+/g, '_');
                       const isSpecial = ['shop', 'orders'].includes(buttonKey);
+                      // Real index in the full (unfiltered) sorted array
+                      const realIndex = [...formData.custom_buttons].sort((a, b) => a.order - b.order).findIndex(b => b.order === btn.order);
 
                       return (
-                        <div key={index}>
+                        <div key={btn.order}>
                           {/* Drop indicator line - shown above this item when it's the drop target */}
                           {dropTargetIndex === index && dragIndex !== null && dragIndex > index && (
                             <div className="h-1 bg-indigo-500 rounded-full mx-2 my-1 transition-all" />
@@ -707,7 +709,7 @@ export default function EditBotPage() {
                                       onChange={(e) => {
                                         const buttons = [...formData.custom_buttons];
                                         const sorted = buttons.sort((a, b) => a.order - b.order);
-                                        sorted[index] = { ...sorted[index], label: e.target.value };
+                                        sorted[realIndex] = { ...sorted[realIndex], label: e.target.value };
                                         setFormData({ ...formData, custom_buttons: sorted });
                                       }}
                                     />
@@ -721,7 +723,7 @@ export default function EditBotPage() {
                                         onChange={(e) => {
                                           const buttons = [...formData.custom_buttons];
                                           const sorted = buttons.sort((a, b) => a.order - b.order);
-                                          sorted[index] = { ...sorted[index], type: e.target.value as 'text' | 'url' };
+                                          sorted[realIndex] = { ...sorted[realIndex], type: e.target.value as 'text' | 'url' };
                                           setFormData({ ...formData, custom_buttons: sorted });
                                         }}
                                       >
@@ -748,7 +750,7 @@ export default function EditBotPage() {
                                       onChange={(e) => {
                                         const buttons = [...formData.custom_buttons];
                                         const sorted = buttons.sort((a, b) => a.order - b.order);
-                                        sorted[index] = { ...sorted[index], url: e.target.value };
+                                        sorted[realIndex] = { ...sorted[realIndex], url: e.target.value };
                                         setFormData({ ...formData, custom_buttons: sorted });
                                       }}
                                     />
@@ -771,7 +773,7 @@ export default function EditBotPage() {
                                       onChange={(e) => {
                                         const buttons = [...formData.custom_buttons];
                                         const sorted = buttons.sort((a, b) => a.order - b.order);
-                                        sorted[index] = { ...sorted[index], message: e.target.value };
+                                        sorted[realIndex] = { ...sorted[realIndex], message: e.target.value };
                                         setFormData({ ...formData, custom_buttons: sorted });
                                       }}
                                     />
@@ -794,7 +796,7 @@ export default function EditBotPage() {
                                       type="button"
                                       onClick={() => {
                                         const buttons = [...formData.custom_buttons].sort((a, b) => a.order - b.order);
-                                        buttons[index] = { ...buttons[index], enabled: !buttons[index].enabled };
+                                        buttons[realIndex] = { ...buttons[realIndex], enabled: !buttons[realIndex].enabled };
                                         setFormData({ ...formData, custom_buttons: buttons });
                                       }}
                                       className={`relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out ${btn.enabled ? 'bg-indigo-600' : 'bg-gray-300'}`}
@@ -815,7 +817,7 @@ export default function EditBotPage() {
                                     onClick={() => {
                                       const buttons = [...formData.custom_buttons]
                                         .sort((a, b) => a.order - b.order)
-                                        .filter((_, i) => i !== index)
+                                        .filter((_, i) => i !== realIndex)
                                         .map((b, i) => ({ ...b, order: i }));
                                       setFormData({ ...formData, custom_buttons: buttons });
                                     }}
