@@ -411,9 +411,16 @@ def create_invoice(amount: float, currency: str, order_id: str, buyer_email: str
                     if exchange_rate > 0 and exchange_rate != 1.0:
                         amount_crypto = amount_value / exchange_rate
                         print(f"[SHKeeper] Calculated crypto: {amount_value} USD / {exchange_rate} = {amount_crypto} {crypto_name}")
-                    elif exchange_rate == 1.0 or exchange_rate <= 0:
+                    elif exchange_rate <= 0:
                         # Exchange rate is missing or invalid, try to get from CoinGecko
                         print(f"[SHKeeper] WARNING: Invalid exchange rate ({exchange_rate}), fetching from CoinGecko...")
+                    elif exchange_rate == 1.0 and crypto_name in ("USDT", "USDC"):
+                        # Stablecoins have 1:1 rate with USD - this is correct
+                        amount_crypto = amount_value
+                        print(f"[SHKeeper] Stablecoin {crypto_name}: 1:1 rate, amount = {amount_crypto}")
+                    elif exchange_rate == 1.0:
+                        # For non-stablecoins, 1.0 rate is likely missing/invalid
+                        print(f"[SHKeeper] WARNING: Exchange rate 1.0 for {crypto_name}, fetching from CoinGecko...")
                         try:
                             from utils.currency_converter import get_exchange_rate
                             # Get BTC price in USD
