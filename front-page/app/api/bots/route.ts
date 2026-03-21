@@ -15,12 +15,12 @@ export async function GET() {
       public_listing: true,
     }).select('name description status profile_picture_url categories featured telegram_username payment_methods cut_off_time rating rating_count').lean();
 
-    // Get order counts per bot (paid orders only)
+    // Get order counts per bot (any order that was paid, shipped, or completed)
     const ordersCollection = mongoose.connection.db?.collection('orders');
     const orderCounts: Record<string, number> = {};
     if (ordersCollection) {
       const counts = await ordersCollection.aggregate([
-        { $match: { paymentStatus: 'paid' } },
+        { $match: { paymentStatus: { $in: ['paid', 'shipped', 'completed'] } } },
         { $group: { _id: '$botId', count: { $sum: 1 } } }
       ]).toArray() as Array<{ _id: string | { toString?: () => string }; count: number }>;
       counts.forEach((c) => {
