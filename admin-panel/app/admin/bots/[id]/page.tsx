@@ -40,9 +40,10 @@ export default function EditBotPage() {
     rating: '', // Rating percentage
     rating_count: '', // Number of ratings
     vendor_pgp_key: '', // Vendor PGP key
-    payment_methods: ['BTC', 'LTC'] as string[], // Supported payment methods (BTC/LTC only)
+    payment_methods: ['BTC', 'LTC'] as string[], // Supported payment methods
     payout_ltc_address: '', // Vendor's LTC payout address
     payout_btc_address: '', // Vendor's BTC payout address
+    payout_usdt_address: '', // Vendor's USDT (TRC20) payout address
     shipping_methods: { STD: 0, EXP: 5, NXT: 10 } as Record<string, number>, // Delivery method costs (Standard, Express, Next Day)
     custom_buttons: [] as Array<{
       label: string;
@@ -238,10 +239,11 @@ export default function EditBotPage() {
           rating_count: botData.rating_count || '',
           vendor_pgp_key: botData.vendor_pgp_key || '',
           payment_methods: (botData.payment_methods && Array.isArray(botData.payment_methods) && botData.payment_methods.length > 0)
-            ? botData.payment_methods.filter((m: string) => m === 'BTC' || m === 'LTC') // Only allow BTC/LTC
+            ? botData.payment_methods
             : ['BTC', 'LTC'], // Default to both
           payout_ltc_address: botData.payout_ltc_address || '',
           payout_btc_address: botData.payout_btc_address || '',
+          payout_usdt_address: botData.payout_usdt_address || '',
           shipping_methods: (() => {
             const methods = botData.shipping_methods;
             if (methods && Array.isArray(methods) && methods.length > 0) {
@@ -491,9 +493,10 @@ export default function EditBotPage() {
         rating: formData.rating || '',
         rating_count: formData.rating_count || '',
         vendor_pgp_key: formData.vendor_pgp_key || '',
-        payment_methods: formData.payment_methods.filter(m => m === 'BTC' || m === 'LTC'), // Only save BTC/LTC
+        payment_methods: formData.payment_methods,
         payout_ltc_address: formData.payout_ltc_address || '',
         payout_btc_address: formData.payout_btc_address || '',
+        payout_usdt_address: formData.payout_usdt_address || '',
         shipping_methods: [
           { code: 'STD', name: 'Standard Delivery', cost: Number(formData.shipping_methods.STD) || 0 },
           { code: 'EXP', name: 'Express Delivery', cost: Number(formData.shipping_methods.EXP) || 0 },
@@ -1379,9 +1382,30 @@ export default function EditBotPage() {
                     />
                     <span className="ml-2 text-sm text-gray-700">LTC (Litecoin)</span>
                   </label>
+                  <label className="flex items-center">
+                    <input
+                      type="checkbox"
+                      className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                      checked={formData.payment_methods.includes('USDT')}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setFormData({
+                            ...formData,
+                            payment_methods: [...formData.payment_methods.filter(m => m !== 'USDT'), 'USDT'],
+                          });
+                        } else {
+                          setFormData({
+                            ...formData,
+                            payment_methods: formData.payment_methods.filter(m => m !== 'USDT'),
+                          });
+                        }
+                      }}
+                    />
+                    <span className="ml-2 text-sm text-gray-700">USDT (Tether TRC20)</span>
+                  </label>
                 </div>
                 <p className="mt-2 text-sm text-gray-500">
-                  Select which payment methods to display on the front page. Only BTC and LTC are supported.
+                  Select which payment methods to display. Customers will see these options at checkout.
                 </p>
               </div>
 
@@ -1409,6 +1433,16 @@ export default function EditBotPage() {
                       onChange={(e) => setFormData({ ...formData, payout_btc_address: e.target.value })}
                       className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm font-mono"
                       placeholder="bc1q... or 1... or 3..."
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">USDT (TRC20) Payout Address</label>
+                    <input
+                      type="text"
+                      value={formData.payout_usdt_address}
+                      onChange={(e) => setFormData({ ...formData, payout_usdt_address: e.target.value })}
+                      className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm font-mono"
+                      placeholder="T... (TRON TRC20 address)"
                     />
                   </div>
                 </div>

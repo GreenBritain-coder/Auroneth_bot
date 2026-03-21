@@ -257,6 +257,8 @@ async def _process_auto_payout(db, order: dict, order_id: str, crypto: str, bala
         payout_address = bot_config.get("payout_ltc_address")
     elif crypto_upper == "BTC":
         payout_address = bot_config.get("payout_btc_address")
+    elif crypto_upper == "USDT":
+        payout_address = bot_config.get("payout_usdt_address")
 
     if not payout_address:
         print(f"[AutoPayout] No payout address for {crypto_upper} in bot config '{bot_config.get('name')}', skipping")
