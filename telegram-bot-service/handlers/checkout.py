@@ -527,54 +527,8 @@ async def handle_checkout_payment(callback: CallbackQuery):
     except:
         await callback.message.answer(payment_text, parse_mode="Markdown", reply_markup=initial_keyboard)
 
-    # If using CryptAPI, we're done (no need to fetch from API)
-    if cryptapi_wallet:
-        return
-
-    # If using SHKeeper, try to get list in background and update if different
-    if shkeeper_api_key and shkeeper_api_url:
-        from services.shkeeper import get_available_cryptocurrencies
-        import asyncio
-        loop = asyncio.get_event_loop()
-        try:
-            crypto_result = await loop.run_in_executor(
-                None,
-                lambda: get_available_cryptocurrencies()
-            )
-        except Exception as e:
-            print(f"Error fetching cryptocurrencies: {e}")
-            # Keep showing fallback list if SHKeeper fails
-            return
-
-        # If SHKeeper returned successfully, update with only bot's allowed payment methods
-        if crypto_result.get("success") and not crypto_result.get("fallback"):
-            keyboard_buttons = []
-            crypto_list = crypto_result.get("crypto_list", [])
-            if crypto_list:
-                # Filter by bot's configured payment methods
-                allowed_upper = [ac.upper() for ac in allowed_currencies]
-                filtered_list = [c for c in crypto_list if c.get("name", "").upper() in allowed_upper]
-                print(f"Found {len(crypto_list)} from SHKeeper, filtered to {len(filtered_list)} by bot config: {allowed_upper}")
-                for crypto_info in filtered_list:
-                    crypto_name = crypto_info.get("name", "")
-                    display_name = crypto_info.get("display_name", crypto_name)
-                    if crypto_name:
-                        keyboard_buttons.append([
-                            InlineKeyboardButton(
-                                text=display_name,
-                                callback_data=f"pay_sel:{invoice_id}:{crypto_name[:10]}"
-                            )
-                        ])
-
-            if keyboard_buttons:
-                keyboard_buttons.append([
-                    InlineKeyboardButton(text="❌ Cancel", callback_data=f"back:{invoice_id}")
-                ])
-                updated_keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
-                try:
-                    await callback.message.edit_text(payment_text, parse_mode="Markdown", reply_markup=updated_keyboard)
-                except:
-                    pass  # If edit fails, keep showing fallback list
+    # Payment methods are already shown from bot's configured payment_methods
+    # No need to fetch from SHKeeper API - if a node isn't ready, the error shows at payment time
 
 
 @router.callback_query(F.data.startswith("pay_sel:"))
