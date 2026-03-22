@@ -87,6 +87,17 @@ export async function GET(request: NextRequest) {
         commissionsByBot[botId].commissionsByCurrency[currency].totalAmount += orderAmount;
       });
 
+      // Build earningsByCurrency for super-admin (platform commission per currency)
+      const earningsByCurrency: Record<string, { totalEarned: number; orderCount: number }> = {};
+      allOrders.forEach(order => {
+        const currency = (order.currency || 'BTC').toUpperCase();
+        if (!earningsByCurrency[currency]) {
+          earningsByCurrency[currency] = { totalEarned: 0, orderCount: 0 };
+        }
+        earningsByCurrency[currency].totalEarned += (order.commission || 0);
+        earningsByCurrency[currency].orderCount += 1;
+      });
+
       // Get all pending payout requests (bot owner payouts)
       const { CommissionPayout } = await import('../../../lib/models');
       const allPendingPayouts = await CommissionPayout.find({
@@ -94,7 +105,20 @@ export async function GET(request: NextRequest) {
       }).lean();
 
       const totalPendingPayout = allPendingPayouts.reduce((sum, p) => sum + (p.amount || 0), 0);
-      
+
+      const pendingPayoutsByCurrency: Record<string, number> = {};
+      allPendingPayouts.forEach(payout => {
+        const currency = (payout.currency || 'BTC').toUpperCase();
+        pendingPayoutsByCurrency[currency] = (pendingPayoutsByCurrency[currency] || 0) + (payout.amount || 0);
+      });
+
+      const availableByCurrency: Record<string, number> = {};
+      Object.keys(earningsByCurrency).forEach(currency => {
+        const earned = earningsByCurrency[currency].totalEarned;
+        const pending = pendingPayoutsByCurrency[currency] || 0;
+        availableByCurrency[currency] = Math.max(0, earned - pending);
+      });
+
       // Platform commission = total commission collected (all commissions are automatically collected)
       // Since payments go to platform wallet, commissions are immediately available
       const availableCommission = totalCommission;
@@ -111,6 +135,9 @@ export async function GET(request: NextRequest) {
         isSuperAdmin: true,
         commissionRate, // Commission rate percentage (e.g., 2 for 2%)
         commissionsByBot: Object.values(commissionsByBot), // Per-bot breakdown
+        earningsByCurrency,
+        pendingPayoutsByCurrency,
+        availableByCurrency,
         recentOrders: allOrders.slice(0, 10).map(order => ({
           orderId: order._id,
           amount: order.amount || 0,

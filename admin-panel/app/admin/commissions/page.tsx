@@ -322,10 +322,10 @@ export default function CommissionsPage() {
                           {bot.orderCount}
                         </td>
                         <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-900">
-                          {formatAmount(bot.totalOrderAmount)}
+                          {formatAmount(bot.totalOrderAmount, Object.keys(bot.commissionsByCurrency)[0])}
                         </td>
                         <td className="px-4 py-4 whitespace-nowrap text-sm font-bold text-indigo-600">
-                          {formatAmount(bot.totalCommission)}
+                          {formatAmount(bot.totalCommission, Object.keys(bot.commissionsByCurrency)[0])}
                         </td>
                         <td className="px-4 py-4 text-sm text-gray-500">
                           {Object.keys(bot.commissionsByCurrency).length > 0 && (
@@ -347,7 +347,7 @@ export default function CommissionsPage() {
                         Total Commission:
                       </td>
                       <td className="px-4 py-3 text-sm font-bold text-indigo-600">
-                        {formatAmount(summary.commissionsByBot.reduce((sum, bot) => sum + bot.totalCommission, 0))}
+                        {formatAmount(summary.commissionsByBot.reduce((sum, bot) => sum + bot.totalCommission, 0), Object.keys(summary.earningsByCurrency || {})[0])}
                       </td>
                       <td></td>
                     </tr>
