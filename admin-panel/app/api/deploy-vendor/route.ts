@@ -4,6 +4,10 @@ import mongoose from 'mongoose';
 
 const COOLIFY_API = process.env.COOLIFY_API_URL || 'http://coolify:8080/api/v1';
 const COOLIFY_TOKEN = '9|7wp1NRfygYeSo7C2nbx45vyclhcfWJOV5d9hSbB066fb0fa6';
+const CF_API_KEY = '7880a19394646bfb0138f4171f6aeefbb6292';
+const CF_EMAIL = 'newsweeties2020@protonmail.com';
+const CF_ZONE_ID = '22e72641c6905f6d8d0d9a36604acec7';
+const SERVER_IP = '111.90.140.72';
 const SERVER_UUID = 'ug4s448ggk0wwc00s8cwg8wg';
 const DESTINATION_UUID = 'k444gcgc84wwsgkko8scwg0g';
 const PROJECT_UUID = 'xit2jlqhl4f8jvbpi3yb6nzp';
@@ -203,7 +207,55 @@ export async function POST(request: NextRequest) {
       detail: `Deployment triggered (build takes 2-5 min)`,
     });
 
-    // Step 6: Set Telegram webhook
+    // Step 6: Create Cloudflare DNS record
+    let dnsStatus = 'pending';
+    let dnsDetail = '';
+    try {
+      const cfRes = await fetch(
+        `https://api.cloudflare.com/client/v4/zones/${CF_ZONE_ID}/dns_records`,
+        {
+          method: 'POST',
+          headers: {
+            'X-Auth-Email': CF_EMAIL,
+            'X-Auth-Key': CF_API_KEY,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            type: 'A',
+            name: domain,
+            content: SERVER_IP,
+            proxied: true,
+            ttl: 1,
+          }),
+        }
+      );
+      const cfData = await cfRes.json();
+      if (cfData.success) {
+        dnsStatus = 'done';
+        dnsDetail = `${domain} → ${SERVER_IP} (proxied)`;
+      } else {
+        // Check if record already exists
+        const errMsg = cfData.errors?.[0]?.message || 'Unknown error';
+        if (errMsg.includes('already exists')) {
+          dnsStatus = 'done';
+          dnsDetail = `${domain} already exists in Cloudflare`;
+        } else {
+          dnsStatus = 'warning';
+          dnsDetail = errMsg;
+        }
+      }
+    } catch (e: any) {
+      dnsStatus = 'warning';
+      dnsDetail = e.message;
+    }
+
+    steps.push({
+      step: 'Create DNS record',
+      status: dnsStatus,
+      detail: dnsDetail,
+    });
+
+    // Step 7: Set Telegram webhook
     let webhookStatus = 'pending';
     try {
       const whRes = await fetch(
@@ -221,7 +273,7 @@ export async function POST(request: NextRequest) {
       detail:
         webhookStatus === 'done'
           ? `${fqdn}/webhook`
-          : `DNS may not be ready yet. Set manually after deploy.`,
+          : `Webhook will work once DNS propagates and deploy completes.`,
     });
 
     return NextResponse.json({

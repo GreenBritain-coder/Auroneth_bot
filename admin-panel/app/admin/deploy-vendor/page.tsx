@@ -202,10 +202,9 @@ export default function DeployVendorPage() {
 
               <div className="mt-4 rounded-md bg-blue-50 p-3">
                 <p className="text-sm text-blue-800">
-                  <strong>Next steps:</strong> Add DNS A record for{' '}
-                  <code className="text-xs bg-blue-100 px-1 rounded">{result.summary.domain}</code>{' '}
-                  pointing to <code className="text-xs bg-blue-100 px-1 rounded">111.90.140.72</code>,
-                  then wait 2-5 min for the Coolify build to finish.
+                  <strong>Next steps:</strong> Wait 2-5 min for the Coolify build to finish,
+                  then send <code className="text-xs bg-blue-100 px-1 rounded">/start</code> to
+                  the bot on Telegram to test.
                 </p>
               </div>
             </div>

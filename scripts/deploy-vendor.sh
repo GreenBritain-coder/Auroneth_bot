@@ -234,7 +234,7 @@ echo "  (12 variables set)"
 
 # ─── Step 5: Deploy the application ─────────────────────────────────────────
 echo ""
-echo "[5/6] Deploying application..."
+echo "[5/7] Deploying application..."
 
 DEPLOY_RESPONSE=$(coolify POST "/applications/${APP_UUID}/deploy")
 DEPLOY_ID=$(echo "$DEPLOY_RESPONSE" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('deployment_uuid', d.get('id','')))" 2>/dev/null || echo "triggered")
@@ -242,9 +242,44 @@ DEPLOY_ID=$(echo "$DEPLOY_RESPONSE" | python3 -c "import sys,json; d=json.load(s
 echo "  Deploy triggered: ${DEPLOY_ID}"
 echo "  (Build will take 2-5 minutes)"
 
-# ─── Step 6: Set Telegram webhook ────────────────────────────────────────────
+# ─── Step 6: Create Cloudflare DNS record ────────────────────────────────────
 echo ""
-echo "[6/6] Setting Telegram webhook..."
+echo "[6/7] Creating Cloudflare DNS record..."
+
+CF_API_KEY="7880a19394646bfb0138f4171f6aeefbb6292"
+CF_EMAIL="newsweeties2020@protonmail.com"
+CF_ZONE_ID="22e72641c6905f6d8d0d9a36604acec7"
+SERVER_IP="111.90.140.72"
+
+DNS_PAYLOAD=$(python3 -c "
+import json, sys
+print(json.dumps({
+    'type': 'A',
+    'name': sys.argv[1],
+    'content': sys.argv[2],
+    'proxied': True,
+    'ttl': 1
+}))
+" "$DOMAIN" "$SERVER_IP")
+
+DNS_RESULT=$(curl -sf -X POST "https://api.cloudflare.com/client/v4/zones/${CF_ZONE_ID}/dns_records" \
+  -H "X-Auth-Email: ${CF_EMAIL}" \
+  -H "X-Auth-Key: ${CF_API_KEY}" \
+  -H "Content-Type: application/json" \
+  -d "$DNS_PAYLOAD" 2>/dev/null || echo '{"success":false}')
+
+DNS_OK=$(echo "$DNS_RESULT" | python3 -c "import sys,json; print(json.load(sys.stdin).get('success',False))" 2>/dev/null)
+
+if [[ "$DNS_OK" == "True" ]]; then
+  echo "  DNS record created: ${DOMAIN} -> ${SERVER_IP} (proxied)"
+else
+  echo "  WARNING: DNS record may already exist or failed to create"
+  echo "  Check Cloudflare dashboard for ${DOMAIN}"
+fi
+
+# ─── Step 7: Set Telegram webhook ────────────────────────────────────────────
+echo ""
+echo "[7/7] Setting Telegram webhook..."
 
 WEBHOOK_RESULT=$(curl -sf "https://api.telegram.org/bot${BOT_TOKEN}/setWebhook?url=${FQDN}/webhook" 2>/dev/null || echo '{"ok":false}')
 WEBHOOK_OK=$(echo "$WEBHOOK_RESULT" | python3 -c "import sys,json; print(json.load(sys.stdin).get('ok',False))" 2>/dev/null)
@@ -252,7 +287,7 @@ WEBHOOK_OK=$(echo "$WEBHOOK_RESULT" | python3 -c "import sys,json; print(json.lo
 if [[ "$WEBHOOK_OK" == "True" ]]; then
   echo "  Webhook set: ${FQDN}/webhook"
 else
-  echo "  WARNING: Webhook will be set once DNS is configured for ${DOMAIN}"
+  echo "  WARNING: Webhook will be set once deploy completes and DNS propagates"
   echo "  Manual: curl \"https://api.telegram.org/bot${BOT_TOKEN}/setWebhook?url=${FQDN}/webhook\""
 fi
 
@@ -272,8 +307,7 @@ echo "  Coolify:     http://111.90.140.72:8000"
 echo "═══════════════════════════════════════════════════════════"
 echo ""
 echo "  Next steps:"
-echo "  1. Add DNS A record: ${DOMAIN} -> 111.90.140.72"
-echo "  2. Wait for Coolify build to complete (~2-5 min)"
-echo "  3. Test: send /start to the bot on Telegram"
-echo "  4. Configure products in admin panel"
+echo "  1. Wait for Coolify build to complete (~2-5 min)"
+echo "  2. Test: send /start to the bot on Telegram"
+echo "  3. Configure products in admin panel"
 echo ""
