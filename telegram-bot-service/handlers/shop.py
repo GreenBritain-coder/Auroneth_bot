@@ -505,7 +505,8 @@ async def handle_rate_order(callback: CallbackQuery):
         await callback.message.answer("❌ You can only rate your own orders.")
         return
 
-    if order.get("paymentStatus", "").lower() != "paid":
+    allowed_statuses = {"paid", "confirmed", "shipped", "delivered", "completed"}
+    if order.get("paymentStatus", "").lower() not in allowed_statuses:
         await callback.message.answer("❌ You can only rate orders that have been paid.")
         return
 

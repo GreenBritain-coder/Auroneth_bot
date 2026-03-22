@@ -1408,8 +1408,8 @@ async def show_payment_invoice(invoice_id: str, callback: CallbackQuery | Messag
         ],
     ]
 
-    # Add "Rate this order" button when paid and not yet rated
-    if order_status == "Paid" and order:
+    # Add "Rate this order" button when order is paid/confirmed/shipped/delivered/completed and not yet rated
+    if order_status in ("Paid", "Confirmed", "Shipped", "Delivered", "Completed") and order:
         reviews_collection = db.reviews
         existing_review = await reviews_collection.find_one({"order_id": invoice_id})
         if not existing_review:
