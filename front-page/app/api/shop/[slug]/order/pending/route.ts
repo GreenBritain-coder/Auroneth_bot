@@ -44,15 +44,26 @@ export async function GET(
     return NextResponse.json({ order: null });
   }
 
+  // Build QR data from payment address
+  const paymentAddress = (order.payment_address as string) || (order.paymentDetails as any)?.address || '';
+  const cryptoAmount = order.crypto_amount || '';
+  const cryptoCurrency = (order.crypto_currency as string) || '';
+  const qrSchemes: Record<string, string> = {
+    BTC: 'bitcoin', LTC: 'litecoin', ETH: 'ethereum', DOGE: 'dogecoin', XMR: 'monero',
+  };
+  const scheme = qrSchemes[cryptoCurrency] || cryptoCurrency.toLowerCase();
+  const qrData = paymentAddress ? `${scheme}:${paymentAddress}?amount=${cryptoAmount}` : '';
+
   return NextResponse.json({
     order: {
       order_token: order.order_token,
+      order_number: order.order_number || order._id,
       status: order.paymentStatus || order.status,
       payment: {
-        address: (order.paymentDetails as any)?.address || '',
-        amount: order.crypto_amount || '',
-        currency: order.crypto_currency || '',
-        qr_data: (order.paymentDetails as any)?.qr_data || '',
+        address: paymentAddress,
+        amount: cryptoAmount,
+        currency: cryptoCurrency,
+        qr_data: qrData,
         expires_at: order.rate_lock_expires_at || '',
       },
       conversion: {
