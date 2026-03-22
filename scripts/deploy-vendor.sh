@@ -234,7 +234,7 @@ echo "  (12 variables set)"
 echo ""
 echo "[5/7] Deploying application..."
 
-DEPLOY_RESPONSE=$(coolify POST "/applications/${APP_UUID}/deploy")
+DEPLOY_RESPONSE=$(coolify POST "/deploy?uuid=${APP_UUID}&force=true")
 DEPLOY_ID=$(echo "$DEPLOY_RESPONSE" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('deployment_uuid', d.get('id','')))" 2>/dev/null || echo "triggered")
 
 echo "  Deploy triggered: ${DEPLOY_ID}"

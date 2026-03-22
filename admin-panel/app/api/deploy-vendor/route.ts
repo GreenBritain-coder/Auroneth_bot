@@ -192,7 +192,7 @@ export async function POST(request: NextRequest) {
     });
 
     // Step 5: Deploy
-    const deployRes = await coolify('POST', `/applications/${appUuid}/deploy`);
+    const deployRes = await coolify('POST', `/deploy?uuid=${appUuid}&force=true`);
 
     steps.push({
       step: 'Deploy application',
