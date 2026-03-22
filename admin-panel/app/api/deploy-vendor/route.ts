@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getTokenFromRequest, verifyToken } from '@/lib/auth';
 import mongoose from 'mongoose';
 
-const COOLIFY_API = 'http://111.90.140.72:8000/api/v1';
+const COOLIFY_API = process.env.COOLIFY_API_URL || 'http://coolify:8080/api/v1';
 const COOLIFY_TOKEN = '9|7wp1NRfygYeSo7C2nbx45vyclhcfWJOV5d9hSbB066fb0fa6';
 const SERVER_UUID = 'ug4s448ggk0wwc00s8cwg8wg';
 const DESTINATION_UUID = 'k444gcgc84wwsgkko8scwg0g';

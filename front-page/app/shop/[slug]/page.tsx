@@ -52,7 +52,6 @@ export default function ShopPage() {
   }, [slug]);
 
   useEffect(() => {
-    setProducts([]);
     setNextCursor(null);
     fetchProducts();
   }, [selectedCategory, selectedSubcategory]);
