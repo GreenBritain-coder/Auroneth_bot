@@ -734,13 +734,28 @@ PAYOUT_FEE_LTC = os.getenv("SHKEEPER_PAYOUT_FEE_SAT_VB", "10")
 PAYOUT_FEE_XMR = os.getenv("SHKEEPER_PAYOUT_FEE_XMR_PRIORITY", "2")
 
 
-def _payout_auth_headers() -> Dict[str, str]:
-    """Basic auth for payout endpoints (SHKeeper UI user:password)."""
-    if not PAYOUT_USER or not PAYOUT_PASSWORD:
-        return {}
-    import base64
-    creds = base64.b64encode(f"{PAYOUT_USER}:{PAYOUT_PASSWORD}".encode()).decode()
-    return {"Authorization": f"Basic {creds}", "Content-Type": "application/json"}
+def _get_payout_session() -> Optional[requests.Session]:
+    """Login to SHKeeper UI and return an authenticated session.
+    SHKeeper payout endpoints use session-based auth (not Basic Auth).
+    """
+    if not PAYOUT_USER or not PAYOUT_PASSWORD or not API_URL:
+        return None
+    try:
+        session = requests.Session()
+        # Login with form POST (fields: name, password)
+        login_resp = session.post(
+            f"{API_URL}/login",
+            data={"name": PAYOUT_USER, "password": PAYOUT_PASSWORD},
+            allow_redirects=True,
+            timeout=10,
+        )
+        if login_resp.status_code == 200 and "/login" not in login_resp.url:
+            return session
+        print(f"[SHKeeper Payout] Login failed: HTTP {login_resp.status_code}, URL: {login_resp.url}")
+        return None
+    except Exception as e:
+        print(f"[SHKeeper Payout] Login error: {e}")
+        return None
 
 
 def create_payout(
@@ -779,9 +794,9 @@ def create_payout(
         "TRX": "TRX",
     }
     crypto_name = currency_map.get(currency.upper(), currency.upper())
-    headers = _payout_auth_headers()
-    if not headers:
-        return {"success": False, "error": "Payout Basic Auth not configured."}
+    session = _get_payout_session()
+    if not session:
+        return {"success": False, "error": "SHKeeper payout login failed. Check SHKEEPER_PAYOUT_USER/PASSWORD."}
     if fee is None:
         if crypto_name == "BTC":
             fee = PAYOUT_FEE_BTC
@@ -797,16 +812,16 @@ def create_payout(
         "fee": str(fee),
     }
     try:
-        response = requests.post(
+        response = session.post(
             f"{API_URL}/api/v1/{crypto_name}/payout",
-            headers=headers,
             json=payload,
             timeout=30,
         )
         if response.status_code == 200:
             data = response.json()
-            task_id = data.get("task_id")
-            return {"success": True, "task_id": task_id}
+            txid = data.get("result") or data.get("task_id")
+            print(f"[SHKeeper Payout] Success: {data}")
+            return {"success": True, "task_id": txid, "txid": txid}
         return {
             "success": False,
             "error": response.text or f"HTTP {response.status_code}",
@@ -827,9 +842,9 @@ def get_payout_status(currency: str, task_id: str) -> Dict:
         "BNB": "BNB", "TRX": "TRX", "XRP": "XRP", "AVAX": "AVAX", "MATIC": "MATIC",
     }
     crypto_name = currency_map.get(currency.upper(), currency.upper())
-    headers = _payout_auth_headers()
-    if not headers:
-        return {"success": False, "error": "Payout Basic Auth not configured."}
+    session = _get_payout_session()
+    if not session:
+        return {"success": False, "error": "SHKeeper payout login failed. Check SHKEEPER_PAYOUT_USER/PASSWORD."}
     try:
         response = requests.get(
             f"{API_URL}/api/v1/{crypto_name}/task/{task_id}",
