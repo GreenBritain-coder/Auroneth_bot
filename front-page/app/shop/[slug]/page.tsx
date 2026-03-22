@@ -26,6 +26,7 @@ interface ShopConfig {
   slug: string;
   description: string;
   banner_url: string | null;
+  profile_picture_url: string | null;
   categories_count: number;
   products_count: number;
 }
@@ -159,9 +160,18 @@ export default function ShopPage() {
           </div>
         )}
         <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
-          <h1 className="text-4xl font-bold text-white mb-3">
-            {shop?.name || 'Loading...'}
-          </h1>
+          <div className="flex items-center gap-4 mb-3">
+            {shop?.profile_picture_url && (
+              <img
+                src={shop.profile_picture_url}
+                alt={shop.name}
+                className="w-14 h-14 sm:w-16 sm:h-16 rounded-full object-cover border-2 border-gray-600"
+              />
+            )}
+            <h1 className="text-4xl font-bold text-white">
+              {shop?.name || 'Loading...'}
+            </h1>
+          </div>
           <p className="text-lg text-gray-300 max-w-2xl">
             {shop?.description || 'Browse our selection of products.'}
           </p>

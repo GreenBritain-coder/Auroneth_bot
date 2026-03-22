@@ -36,6 +36,7 @@ export async function GET(
         slug: bot.web_shop_slug,
         description: bot.description || '',
         banner_url: (bot as Record<string, unknown>).web_shop_banner_url || null,
+        profile_picture_url: bot.profile_picture_url || null,
         categories_count: categoriesCount,
         products_count: productsCount,
       },
