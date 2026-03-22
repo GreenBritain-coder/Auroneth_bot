@@ -56,9 +56,19 @@ export async function getValidatedCart(botId: string, sessionId: string) {
     const lineTotal = Math.round(currentPrice * item.quantity * 100) / 100;
     subtotal += lineTotal;
 
+    // Stock check: null/undefined stock = unlimited (matches Telegram bot behavior)
+    const productStock = (product as Record<string, unknown>).stock as number | null | undefined;
     const variations = (product as Record<string, unknown>).variations as Array<{ stock?: number }> | undefined;
-    const totalStock = (variations || []).reduce((sum: number, v: { stock?: number }) => sum + (v.stock ?? 0), 0);
-    const inStock = !variations || variations.length === 0 || totalStock > 0;
+    const hasAnyStockField = productStock !== undefined && productStock !== null;
+    const hasVariationStock = variations?.some((v: { stock?: number }) => v.stock !== undefined && v.stock !== null) ?? false;
+    let inStock = true;
+    if (hasAnyStockField) {
+      inStock = productStock > 0;
+    } else if (hasVariationStock) {
+      const totalStock = (variations || []).reduce((sum: number, v: { stock?: number }) => sum + (v.stock ?? 0), 0);
+      inStock = totalStock > 0;
+    }
+    // No stock field at all = unlimited = in stock
     if (!inStock) hasOos = true;
 
     return {
