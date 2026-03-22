@@ -217,11 +217,27 @@ async def handle_shkeeper_webhook(request: web.Request) -> web.Response:
             except Exception as e:
                 print(f"Error updating invoice message: {e}")
 
-            # Auto-payout: send vendor their share (run in executor to avoid blocking event loop)
+            # Schedule deferred auto-payout: wait for 1 blockchain confirmation before sending
+            # This prevents double-spend attacks on 0-conf detected payments
             try:
-                await _process_auto_payout(db, order, external_id, crypto, balance_crypto)
+                pending_payouts = db.pending_payouts
+                existing = await pending_payouts.find_one({"order_id": external_id})
+                if not existing:
+                    await pending_payouts.insert_one({
+                        "order_id": external_id,
+                        "crypto": crypto,
+                        "balance_crypto": balance_crypto,
+                        "bot_id": order.get("botId"),
+                        "status": "waiting_confirmation",
+                        "created_at": datetime.utcnow(),
+                        "confirmations_required": 1,
+                        "txid": transactions[0].get("txid") if transactions else None,
+                    })
+                    print(f"[AutoPayout] Deferred payout for order {external_id} - waiting for 1 confirmation")
+                else:
+                    print(f"[AutoPayout] Payout already scheduled for order {external_id}")
             except Exception as e:
-                print(f"[SHKeeper Webhook] Auto-payout error for order {external_id}: {e}")
+                print(f"[SHKeeper Webhook] Error scheduling deferred payout for {external_id}: {e}")
                 import traceback
                 traceback.print_exc()
 

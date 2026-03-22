@@ -110,3 +110,43 @@ const ProductSchema = new Schema<IProduct>({
 
 export const Product = mongoose.models.Product || mongoose.model<IProduct>('Product', ProductSchema);
 
+// Cart Model (web shop server-side carts)
+export interface ICartItem {
+  product_id: string;
+  quantity: number;
+  price_snapshot: number;
+  added_at: Date;
+}
+
+export interface ICart extends Document {
+  _id: string;
+  bot_id: string;
+  session_id: string;
+  items: ICartItem[];
+  discount_code?: string;
+  discount_amount?: number;
+  created_at: Date;
+  updated_at: Date;
+  expires_at: Date;
+}
+
+const CartItemSchema = new Schema({
+  product_id: { type: String, required: true },
+  quantity: { type: Number, required: true, min: 1, max: 10 },
+  price_snapshot: { type: Number, required: true },
+  added_at: { type: Date, default: Date.now },
+}, { _id: false });
+
+const CartSchema = new Schema<ICart>({
+  bot_id: { type: String, required: true },
+  session_id: { type: String, required: true },
+  items: { type: [CartItemSchema], default: [] },
+  discount_code: { type: String, default: null },
+  discount_amount: { type: Number, default: 0 },
+  expires_at: { type: Date, required: true, index: { expires: 0 } },
+}, { timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' } });
+
+CartSchema.index({ bot_id: 1, session_id: 1 }, { unique: true });
+
+export const Cart = mongoose.models.Cart || mongoose.model<ICart>('Cart', CartSchema);
+

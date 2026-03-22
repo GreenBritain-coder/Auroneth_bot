@@ -255,6 +255,10 @@ async def main():
         # Start the order scheduler for auto-transitions (expire, auto-deliver, auto-complete)
         from services.order_scheduler import run_order_scheduler
         asyncio.create_task(run_order_scheduler())
+
+        # Start the deferred payout scheduler (waits for 1 confirmation before sending payouts)
+        from services.payout_scheduler import run_payout_scheduler
+        asyncio.create_task(run_payout_scheduler())
     
     async def shutdown_handler(app):
         await on_shutdown(bot)
