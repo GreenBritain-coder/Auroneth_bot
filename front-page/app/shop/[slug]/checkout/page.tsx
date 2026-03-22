@@ -32,6 +32,12 @@ interface PaymentMethod {
   icon: string;
 }
 
+interface ShippingMethod {
+  code: string;
+  name: string;
+  cost: number;
+}
+
 interface CheckoutResponse {
   order_token: string;
   status: string;
@@ -52,10 +58,23 @@ interface CheckoutResponse {
     locked_at: string;
     expires_at: string;
   };
+  shipping?: {
+    method: string;
+    cost: number;
+  };
   tracking_url: string;
 }
 
-type CheckoutStep = 'select' | 'paying' | 'confirmed';
+type CheckoutStep = 'address' | 'select' | 'paying' | 'confirmed';
+
+interface AddressErrors {
+  fullName?: string;
+  street?: string;
+  city?: string;
+  postcode?: string;
+  country?: string;
+  shippingMethod?: string;
+}
 
 export default function CheckoutPage() {
   const params = useParams();
@@ -64,8 +83,9 @@ export default function CheckoutPage() {
 
   const [cart, setCart] = useState<CartData | null>(null);
   const [methods, setMethods] = useState<PaymentMethod[]>([]);
+  const [shippingMethods, setShippingMethods] = useState<ShippingMethod[]>([]);
   const [selectedCoin, setSelectedCoin] = useState<string | null>(null);
-  const [step, setStep] = useState<CheckoutStep>('select');
+  const [step, setStep] = useState<CheckoutStep>('address');
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -74,6 +94,16 @@ export default function CheckoutPage() {
   const [copied, setCopied] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const idempotencyKeyRef = useRef<string>('');
+
+  // Address form state
+  const [fullName, setFullName] = useState('');
+  const [street, setStreet] = useState('');
+  const [city, setCity] = useState('');
+  const [postcode, setPostcode] = useState('');
+  const [country, setCountry] = useState('United Kingdom');
+  const [selectedShipping, setSelectedShipping] = useState<string>('STD');
+  const [shippingCost, setShippingCost] = useState(0);
+  const [addressErrors, setAddressErrors] = useState<AddressErrors>({});
 
   // Generate or restore idempotency key from sessionStorage
   useEffect(() => {
@@ -88,23 +118,23 @@ export default function CheckoutPage() {
     }
   }, [slug]);
 
-  // Fetch cart, payment methods, and check for pending order on mount
+  // Fetch cart, payment methods, shipping methods, and check for pending order
   useEffect(() => {
     const init = async () => {
       try {
-        const [cartRes, methodsRes, pendingRes] = await Promise.all([
+        const [cartRes, methodsRes, shippingRes, pendingRes] = await Promise.all([
           fetch(`/api/shop/${slug}/cart?t=${Date.now()}`),
           fetch(`/api/shop/${slug}/payment-methods`),
+          fetch(`/api/shop/${slug}/shipping-methods`),
           fetch(`/api/shop/${slug}/order/pending`),
         ]);
 
-        // Check for pending order first — resume if found
+        // Check for pending order first - resume if found
         if (pendingRes.ok) {
           const pendingData = await pendingRes.json();
           if (pendingData.order && pendingData.order.payment?.address) {
             setCheckout(pendingData.order);
             setStep('paying');
-            // Still load cart for display
             if (cartRes.ok) {
               const cartData = await cartRes.json();
               if (cartData.cart) setCart(cartData.cart);
@@ -112,6 +142,10 @@ export default function CheckoutPage() {
             if (methodsRes.ok) {
               const methodsData = await methodsRes.json();
               setMethods(methodsData.methods || []);
+            }
+            if (shippingRes.ok) {
+              const shippingData = await shippingRes.json();
+              setShippingMethods(shippingData.methods || []);
             }
             setLoading(false);
             return;
@@ -137,6 +171,18 @@ export default function CheckoutPage() {
         if (methodsRes.ok) {
           const methodsData = await methodsRes.json();
           setMethods(methodsData.methods || []);
+        }
+
+        if (shippingRes.ok) {
+          const shippingData = await shippingRes.json();
+          const methods = shippingData.methods || [];
+          setShippingMethods(methods);
+          // Set default shipping cost
+          if (methods.length > 0) {
+            const defaultMethod = methods.find((m: ShippingMethod) => m.code === 'STD') || methods[0];
+            setSelectedShipping(defaultMethod.code);
+            setShippingCost(defaultMethod.cost);
+          }
         }
       } catch (err) {
         console.error('Init error:', err);
@@ -191,6 +237,32 @@ export default function CheckoutPage() {
     return () => clearInterval(poll);
   }, [checkout, step, slug]);
 
+  // Update shipping cost when method changes
+  const handleShippingChange = (code: string) => {
+    setSelectedShipping(code);
+    const method = shippingMethods.find(m => m.code === code);
+    setShippingCost(method?.cost || 0);
+  };
+
+  // Validate address form
+  const validateAddress = (): boolean => {
+    const errors: AddressErrors = {};
+    if (!fullName.trim() || fullName.trim().length < 2) errors.fullName = 'Full name required (min 2 characters)';
+    if (!street.trim() || street.trim().length < 5) errors.street = 'Street address required (min 5 characters)';
+    if (!city.trim() || city.trim().length < 2) errors.city = 'City required (min 2 characters)';
+    if (!postcode.trim() || postcode.trim().length < 3) errors.postcode = 'Postcode required (min 3 characters)';
+    if (!country.trim()) errors.country = 'Country required';
+    if (!selectedShipping) errors.shippingMethod = 'Please select a shipping method';
+    setAddressErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
+  const handleContinueToPayment = () => {
+    if (validateAddress()) {
+      setStep('select');
+    }
+  };
+
   const handleCheckout = useCallback(async () => {
     if (!selectedCoin || submitting) return;
     setSubmitting(true);
@@ -203,20 +275,26 @@ export default function CheckoutPage() {
         body: JSON.stringify({
           crypto_currency: selectedCoin,
           idempotency_key: idempotencyKeyRef.current,
+          shipping_address: {
+            full_name: fullName.trim(),
+            street: street.trim(),
+            city: city.trim(),
+            postcode: postcode.trim(),
+            country: country.trim(),
+          },
+          shipping_method_code: selectedShipping,
         }),
       });
 
       const data = await res.json();
 
       if (res.status === 409 && data.order_token) {
-        // Idempotency hit - redirect to existing order
         router.push(`/shop/${slug}/order/${data.order_token}`);
         return;
       }
 
       if (!res.ok) {
         setError(data.error || 'Checkout failed');
-        // Generate new key for retry
         const newKey = crypto.randomUUID();
         idempotencyKeyRef.current = newKey;
         sessionStorage.setItem(`checkout_idempotency_${slug}`, newKey);
@@ -225,7 +303,6 @@ export default function CheckoutPage() {
 
       setCheckout(data);
       setStep('paying');
-      // Clear idempotency key — next checkout will get a fresh one
       sessionStorage.removeItem(`checkout_idempotency_${slug}`);
     } catch (err) {
       console.error('Checkout error:', err);
@@ -236,7 +313,7 @@ export default function CheckoutPage() {
     } finally {
       setSubmitting(false);
     }
-  }, [selectedCoin, submitting, slug, router]);
+  }, [selectedCoin, submitting, slug, router, fullName, street, city, postcode, country, selectedShipping]);
 
   const copyAddress = () => {
     if (checkout?.payment.address) {
@@ -253,6 +330,7 @@ export default function CheckoutPage() {
   };
 
   const currencySymbol = cart?.currency === 'GBP' ? '\u00a3' : '$';
+  const totalWithShipping = cart ? Math.round((cart.total + shippingCost) * 100) / 100 : 0;
 
   if (loading) {
     return (
@@ -333,7 +411,6 @@ export default function CheckoutPage() {
           {checkout.payment.qr_data && (
             <div className="flex justify-center mb-6">
               <div className="bg-white p-4 rounded-lg">
-                {/* Use a simple QR placeholder - rendered via img from QR API */}
                 <img
                   src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(checkout.payment.qr_data)}`}
                   alt="Payment QR Code"
@@ -376,6 +453,11 @@ export default function CheckoutPage() {
                   <span>Total ({cart.currency})</span>
                   <span>{currencySymbol}{checkout.conversion.display_amount.toFixed(2)}</span>
                 </div>
+                {checkout.shipping && checkout.shipping.cost > 0 && (
+                  <div className="flex justify-between text-gray-400 text-xs">
+                    <span>(includes {checkout.shipping.method}: {currencySymbol}{checkout.shipping.cost.toFixed(2)})</span>
+                  </div>
+                )}
                 <div className="flex justify-between text-gray-300">
                   <span>Total (USD)</span>
                   <span>${checkout.conversion.fiat_amount.toFixed(2)}</span>
@@ -397,10 +479,217 @@ export default function CheckoutPage() {
     );
   }
 
+  // Order summary component (used in address and select steps)
+  const OrderSummary = () => (
+    <div className="bg-gray-800 rounded-lg border border-gray-700 p-6 mb-6">
+      <h3 className="text-lg font-semibold text-white mb-4">Order Summary</h3>
+      <div className="space-y-2 mb-4">
+        {cart.items.map((item) => (
+          <div key={item.product_id} className="flex justify-between text-sm text-gray-300">
+            <span>{item.name} x{item.quantity}</span>
+            <span>{currencySymbol}{item.line_total.toFixed(2)}</span>
+          </div>
+        ))}
+      </div>
+      <div className="border-t border-gray-700 pt-3 space-y-2 text-sm">
+        <div className="flex justify-between text-gray-300">
+          <span>Subtotal</span>
+          <span>{currencySymbol}{cart.subtotal.toFixed(2)}</span>
+        </div>
+        {cart.discount > 0 && (
+          <div className="flex justify-between text-green-400">
+            <span>Discount</span>
+            <span>-{currencySymbol}{cart.discount.toFixed(2)}</span>
+          </div>
+        )}
+        <div className="flex justify-between text-gray-300">
+          <span>Shipping ({shippingMethods.find(m => m.code === selectedShipping)?.name || 'Standard'})</span>
+          <span>{shippingCost === 0 ? 'Free' : `${currencySymbol}${shippingCost.toFixed(2)}`}</span>
+        </div>
+        <div className="border-t border-gray-700 pt-2 flex justify-between text-white font-semibold text-lg">
+          <span>Total</span>
+          <span>{currencySymbol}{totalWithShipping.toFixed(2)}</span>
+        </div>
+      </div>
+    </div>
+  );
+
+  // Step: Address form
+  if (step === 'address') {
+    return (
+      <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <h1 className="text-2xl font-bold text-white mb-6">Checkout</h1>
+
+        {/* Step indicator */}
+        <div className="flex items-center gap-2 mb-8 text-sm">
+          <span className="px-3 py-1 bg-blue-600 text-white rounded-full font-medium">1. Address</span>
+          <span className="text-gray-600">&#8594;</span>
+          <span className="px-3 py-1 bg-gray-700 text-gray-400 rounded-full">2. Payment</span>
+          <span className="text-gray-600">&#8594;</span>
+          <span className="px-3 py-1 bg-gray-700 text-gray-400 rounded-full">3. Confirm</span>
+        </div>
+
+        {error && (
+          <div className="bg-red-900/30 border border-red-700 rounded-lg p-4 mb-6">
+            <p className="text-red-300 text-sm">{error}</p>
+          </div>
+        )}
+
+        {/* Shipping Address Form */}
+        <div className="bg-gray-800 rounded-lg border border-gray-700 p-6 mb-6">
+          <h3 className="text-lg font-semibold text-white mb-4">Shipping Address</h3>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-1">Full Name</label>
+              <input
+                type="text"
+                value={fullName}
+                onChange={(e) => { setFullName(e.target.value); setAddressErrors(prev => ({ ...prev, fullName: undefined })); }}
+                className={`w-full bg-gray-900 border ${addressErrors.fullName ? 'border-red-500' : 'border-gray-700'} rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent`}
+                placeholder="John Smith"
+              />
+              {addressErrors.fullName && <p className="text-red-400 text-xs mt-1">{addressErrors.fullName}</p>}
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-1">Street Address</label>
+              <input
+                type="text"
+                value={street}
+                onChange={(e) => { setStreet(e.target.value); setAddressErrors(prev => ({ ...prev, street: undefined })); }}
+                className={`w-full bg-gray-900 border ${addressErrors.street ? 'border-red-500' : 'border-gray-700'} rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent`}
+                placeholder="123 High Street"
+              />
+              {addressErrors.street && <p className="text-red-400 text-xs mt-1">{addressErrors.street}</p>}
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-1">City</label>
+                <input
+                  type="text"
+                  value={city}
+                  onChange={(e) => { setCity(e.target.value); setAddressErrors(prev => ({ ...prev, city: undefined })); }}
+                  className={`w-full bg-gray-900 border ${addressErrors.city ? 'border-red-500' : 'border-gray-700'} rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent`}
+                  placeholder="London"
+                />
+                {addressErrors.city && <p className="text-red-400 text-xs mt-1">{addressErrors.city}</p>}
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-1">Postcode</label>
+                <input
+                  type="text"
+                  value={postcode}
+                  onChange={(e) => { setPostcode(e.target.value); setAddressErrors(prev => ({ ...prev, postcode: undefined })); }}
+                  className={`w-full bg-gray-900 border ${addressErrors.postcode ? 'border-red-500' : 'border-gray-700'} rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent`}
+                  placeholder="SW1A 1AA"
+                />
+                {addressErrors.postcode && <p className="text-red-400 text-xs mt-1">{addressErrors.postcode}</p>}
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-1">Country</label>
+              <select
+                value={country}
+                onChange={(e) => setCountry(e.target.value)}
+                className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              >
+                <option value="United Kingdom">United Kingdom</option>
+                <option value="Ireland">Ireland</option>
+                <option value="France">France</option>
+                <option value="Germany">Germany</option>
+                <option value="Netherlands">Netherlands</option>
+                <option value="Belgium">Belgium</option>
+                <option value="Spain">Spain</option>
+                <option value="Italy">Italy</option>
+                <option value="Portugal">Portugal</option>
+                <option value="Austria">Austria</option>
+                <option value="Switzerland">Switzerland</option>
+                <option value="Sweden">Sweden</option>
+                <option value="Norway">Norway</option>
+                <option value="Denmark">Denmark</option>
+                <option value="Poland">Poland</option>
+                <option value="Czech Republic">Czech Republic</option>
+                <option value="United States">United States</option>
+                <option value="Canada">Canada</option>
+                <option value="Australia">Australia</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        {/* Shipping Method Selection */}
+        <div className="bg-gray-800 rounded-lg border border-gray-700 p-6 mb-6">
+          <h3 className="text-lg font-semibold text-white mb-4">Shipping Method</h3>
+          {shippingMethods.length === 0 ? (
+            <p className="text-gray-400 text-sm">Loading shipping methods...</p>
+          ) : (
+            <div className="space-y-3">
+              {shippingMethods.map((method) => (
+                <label
+                  key={method.code}
+                  className={`flex items-center justify-between p-4 rounded-lg border cursor-pointer transition-all ${
+                    selectedShipping === method.code
+                      ? 'border-blue-500 bg-blue-900/20 ring-2 ring-blue-500/50'
+                      : 'border-gray-700 bg-gray-900 hover:border-gray-500'
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="radio"
+                      name="shipping"
+                      value={method.code}
+                      checked={selectedShipping === method.code}
+                      onChange={() => handleShippingChange(method.code)}
+                      className="w-4 h-4 text-blue-600"
+                    />
+                    <span className="text-white font-medium">{method.name}</span>
+                  </div>
+                  <span className="text-white font-semibold">
+                    {method.cost === 0 ? 'Free' : `${currencySymbol}${method.cost.toFixed(2)}`}
+                  </span>
+                </label>
+              ))}
+            </div>
+          )}
+          {addressErrors.shippingMethod && <p className="text-red-400 text-xs mt-2">{addressErrors.shippingMethod}</p>}
+        </div>
+
+        {/* Order Summary */}
+        <OrderSummary />
+
+        {/* Continue Button */}
+        <button
+          onClick={handleContinueToPayment}
+          className="w-full px-6 py-4 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors text-lg"
+        >
+          Continue to Payment
+        </button>
+
+        <Link
+          href={`/shop/${slug}/cart`}
+          className="block text-center text-sm text-gray-400 hover:text-white mt-4 transition-colors"
+        >
+          Back to Cart
+        </Link>
+      </div>
+    );
+  }
+
   // Step: Select crypto
   return (
     <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <h1 className="text-2xl font-bold text-white mb-6">Checkout</h1>
+
+      {/* Step indicator */}
+      <div className="flex items-center gap-2 mb-8 text-sm">
+        <span className="px-3 py-1 bg-green-700 text-white rounded-full font-medium">1. Address</span>
+        <span className="text-gray-600">&#8594;</span>
+        <span className="px-3 py-1 bg-blue-600 text-white rounded-full font-medium">2. Payment</span>
+        <span className="text-gray-600">&#8594;</span>
+        <span className="px-3 py-1 bg-gray-700 text-gray-400 rounded-full">3. Confirm</span>
+      </div>
 
       {error && (
         <div className="bg-red-900/30 border border-red-700 rounded-lg p-4 mb-6">
@@ -409,33 +698,7 @@ export default function CheckoutPage() {
       )}
 
       {/* Order Summary */}
-      <div className="bg-gray-800 rounded-lg border border-gray-700 p-6 mb-6">
-        <h3 className="text-lg font-semibold text-white mb-4">Order Summary</h3>
-        <div className="space-y-2 mb-4">
-          {cart.items.map((item) => (
-            <div key={item.product_id} className="flex justify-between text-sm text-gray-300">
-              <span>{item.name} x{item.quantity}</span>
-              <span>{currencySymbol}{item.line_total.toFixed(2)}</span>
-            </div>
-          ))}
-        </div>
-        <div className="border-t border-gray-700 pt-3 space-y-2 text-sm">
-          <div className="flex justify-between text-gray-300">
-            <span>Subtotal</span>
-            <span>{currencySymbol}{cart.subtotal.toFixed(2)}</span>
-          </div>
-          {cart.discount > 0 && (
-            <div className="flex justify-between text-green-400">
-              <span>Discount</span>
-              <span>-{currencySymbol}{cart.discount.toFixed(2)}</span>
-            </div>
-          )}
-          <div className="border-t border-gray-700 pt-2 flex justify-between text-white font-semibold text-lg">
-            <span>Total</span>
-            <span>{currencySymbol}{cart.total.toFixed(2)}</span>
-          </div>
-        </div>
-      </div>
+      <OrderSummary />
 
       {/* Crypto Selector */}
       <div className="bg-gray-800 rounded-lg border border-gray-700 p-6 mb-6">
@@ -475,12 +738,12 @@ export default function CheckoutPage() {
           : 'Select a cryptocurrency'}
       </button>
 
-      <Link
-        href={`/shop/${slug}/cart`}
-        className="block text-center text-sm text-gray-400 hover:text-white mt-4 transition-colors"
+      <button
+        onClick={() => setStep('address')}
+        className="block w-full text-center text-sm text-gray-400 hover:text-white mt-4 transition-colors"
       >
-        Back to Cart
-      </Link>
+        Back to Shipping Details
+      </button>
     </div>
   );
 }

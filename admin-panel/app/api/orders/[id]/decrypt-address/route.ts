@@ -51,7 +51,7 @@ export async function POST(
       const { Bot } = await import('../../../../../lib/models');
       const userBots = await Bot.find({ owner: payload.userId });
       const userBotIds = userBots.map(b => b._id.toString());
-      
+
       // Handle both string and ObjectId botId from order
       const orderBotId = typeof order.botId === 'string' ? order.botId : order.botId.toString();
       if (!userBotIds.includes(orderBotId)) {
@@ -60,113 +60,133 @@ export async function POST(
     }
 
     if (!order.encrypted_address) {
-      return NextResponse.json({ 
+      return NextResponse.json({
         address: null,
         message: 'No address stored for this order'
       });
     }
 
-    // Get user's secret phrase - userId might be string or ObjectId
-    const userId = typeof order.userId === 'string' ? order.userId : order.userId.toString();
-    // Use native collection to avoid ObjectId casting issues
-    let user = await User.collection.findOne({ _id: userId });
-    
-    // If not found, try as ObjectId
-    if (!user) {
-      try {
-        const mongoose = require('mongoose');
-        const objectId = new mongoose.Types.ObjectId(userId);
-        user = await User.collection.findOne({ _id: objectId });
-      } catch (e) {
-        // Not a valid ObjectId, user stays null
-      }
-    }
-    // Use manual secret phrase if provided, otherwise use user's current secret phrase
+    // Determine secret phrase based on order source
     let secretPhraseToUse: string | undefined;
-    
+
     if (manualSecretPhrase) {
+      // Manual override always takes priority
       secretPhraseToUse = manualSecretPhrase;
       console.log('Using manually provided secret phrase for decryption');
-    } else if (user && user.secret_phrase) {
-      secretPhraseToUse = user.secret_phrase;
+    } else if (order.source === 'web') {
+      // Web orders use a fixed secret phrase (no user accounts)
+      secretPhraseToUse = 'web_anonymous';
+      console.log('Using web_anonymous secret phrase for web order');
+    } else {
+      // Telegram bot orders - look up user's secret phrase
+      const userId = typeof order.userId === 'string' ? order.userId : order.userId?.toString();
+      if (userId) {
+        // Use native collection to avoid ObjectId casting issues
+        let user = await User.collection.findOne({ _id: userId });
+
+        // If not found, try as ObjectId
+        if (!user) {
+          try {
+            const mongoose = require('mongoose');
+            const objectId = new mongoose.Types.ObjectId(userId);
+            user = await User.collection.findOne({ _id: objectId });
+          } catch (e) {
+            // Not a valid ObjectId, user stays null
+          }
+        }
+
+        if (user && user.secret_phrase) {
+          secretPhraseToUse = user.secret_phrase;
+        }
+      }
     }
-    
+
     if (!secretPhraseToUse) {
-      return NextResponse.json({ 
-        error: 'User secret phrase not found. Please provide the secret phrase manually if the user changed it.' 
+      return NextResponse.json({
+        error: 'User secret phrase not found. Please provide the secret phrase manually if the user changed it.'
       }, { status: 404 });
     }
 
     // Decrypt address using the decryption utility
     const { decryptAddress } = await import('../../../../../lib/address_decryption');
-    
+
     console.log('Attempting to decrypt address for order:', orderId);
-    console.log('User ID:', userId);
+    console.log('Order source:', order.source || 'telegram');
     console.log('Has encrypted_address:', !!order.encrypted_address);
-    console.log('Encrypted address length:', order.encrypted_address?.length || 0);
-    console.log('Encrypted address (first 40 chars):', order.encrypted_address?.substring(0, 40) || 'N/A');
-    console.log('Using secret phrase:', manualSecretPhrase ? 'Manual (provided)' : 'User current');
-    console.log('Order has secret_phrase_hash:', !!order.secret_phrase_hash);
-    
+    console.log('Using secret phrase:', manualSecretPhrase ? 'Manual (provided)' : order.source === 'web' ? 'web_anonymous' : 'User current');
+
     // Try with the selected secret phrase
     let decryptionResult = await decryptAddress(order.encrypted_address, secretPhraseToUse);
-    
+
     // If decryption fails, check the reason
     if (!decryptionResult.success) {
       console.error('Decryption failed:', decryptionResult.error);
-      
+
       const errorMsg = decryptionResult.error || 'Failed to decrypt address';
       const isHMACError = errorMsg.includes('HMAC') || errorMsg.includes('Invalid Token');
-      
-      // Check if secret phrase changed (only if we have hash to compare)
-      if (isHMACError && order.secret_phrase_hash && user && user.secret_phrase) {
-      const crypto = require('crypto');
-      const currentPhraseHash = crypto.createHash('sha256').update(user.secret_phrase).digest('hex');
-      
-        console.log('HMAC error detected. Checking if secret phrase changed...');
-      console.log('Order secret_phrase_hash:', order.secret_phrase_hash);
-      console.log('Current secret_phrase_hash:', currentPhraseHash);
-      
-      if (currentPhraseHash !== order.secret_phrase_hash) {
-        // Secret phrase doesn't match - user changed it after order creation
-        return NextResponse.json({ 
-          error: 'Decryption failed: The address was encrypted with a different secret phrase. ' +
-                 'The user changed their secret phrase after creating this order. ' +
-                 'To view the address, you need the secret phrase that was active when the order was created. ' +
-                 'The order was encrypted with secret phrase hash: ' + order.secret_phrase_hash.substring(0, 16) + '...',
-          errorCode: 'SECRET_PHRASE_MISMATCH',
-          orderSecretPhraseHash: order.secret_phrase_hash
+
+      if (isHMACError && order.source === 'web') {
+        return NextResponse.json({
+          error: 'Decryption failed for web order. Verify ADDRESS_ENCRYPTION_KEY is identical in both front-page and admin-panel services.',
+          errorCode: 'ENCRYPTION_KEY_MISMATCH'
         }, { status: 400 });
-        } else {
-          // Secret phrase matches but decryption still fails - likely encryption key mismatch
-          console.error('Secret phrase hash matches, but decryption failed. This indicates encryption key mismatch.');
-          console.error('Verify ADDRESS_ENCRYPTION_KEY is the same in both telegram-bot-service and admin-panel');
-          
-          return NextResponse.json({ 
-            error: 'Decryption failed: The encryption key does not match. ' +
-                   'ADDRESS_ENCRYPTION_KEY must be identical in Coolify admin-panel and telegram-bot-service.\n\n' +
-                   'Fix: Set the same key in both apps (Configuration → Environment Variables), then redeploy both.',
-            errorCode: 'ENCRYPTION_KEY_MISMATCH'
-          }, { status: 400 });
+      }
+
+      // Check if secret phrase changed (only if we have hash to compare)
+      if (isHMACError && order.secret_phrase_hash) {
+        const userId = typeof order.userId === 'string' ? order.userId : order.userId?.toString();
+        let user = null;
+        if (userId) {
+          user = await User.collection.findOne({ _id: userId });
+          if (!user) {
+            try {
+              const mongoose = require('mongoose');
+              const objectId = new mongoose.Types.ObjectId(userId);
+              user = await User.collection.findOne({ _id: objectId });
+            } catch (e) {}
+          }
         }
-      } else if (isHMACError) {
-        // HMAC error but no hash to compare - likely encryption key or secret phrase issue
-        return NextResponse.json({ 
+
+        if (user && user.secret_phrase) {
+          const crypto = require('crypto');
+          const currentPhraseHash = crypto.createHash('sha256').update(user.secret_phrase).digest('hex');
+
+          if (currentPhraseHash !== order.secret_phrase_hash) {
+            return NextResponse.json({
+              error: 'Decryption failed: The address was encrypted with a different secret phrase. ' +
+                     'The user changed their secret phrase after creating this order. ' +
+                     'To view the address, you need the secret phrase that was active when the order was created.',
+              errorCode: 'SECRET_PHRASE_MISMATCH',
+              orderSecretPhraseHash: order.secret_phrase_hash
+            }, { status: 400 });
+          } else {
+            return NextResponse.json({
+              error: 'Decryption failed: The encryption key does not match. ' +
+                     'ADDRESS_ENCRYPTION_KEY must be identical in all services.\n\n' +
+                     'Fix: Set the same key in both apps, then redeploy both.',
+              errorCode: 'ENCRYPTION_KEY_MISMATCH'
+            }, { status: 400 });
+          }
+        }
+      }
+
+      if (isHMACError) {
+        return NextResponse.json({
           error: 'Decryption failed: Invalid Token (HMAC verification failed). ' +
                  'Possible causes:\n' +
                  '1. The user changed their secret phrase after creating this order\n' +
                  '2. The ADDRESS_ENCRYPTION_KEY does not match between services\n' +
                  '3. The order was encrypted before ADDRESS_ENCRYPTION_KEY was properly configured\n\n' +
-                 'Try entering the secret phrase manually if the user changed it, or verify the encryption keys match.',
+                 'Try entering the secret phrase manually if the user changed it.',
           errorCode: 'DECRYPTION_FAILED'
         }, { status: 400 });
       }
-      
-      return NextResponse.json({ 
+
+      return NextResponse.json({
         error: errorMsg
       }, { status: 500 });
     }
-    
+
     return NextResponse.json({
       address: decryptionResult.address,
       success: true
@@ -180,4 +200,3 @@ export async function POST(
     );
   }
 }
-

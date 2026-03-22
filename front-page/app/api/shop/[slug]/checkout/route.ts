@@ -5,12 +5,19 @@ import connectDB from '../../../../../lib/db';
 import { Bot, Cart, Product, Order, ICartItem } from '../../../../../lib/models';
 import { getProductPrice } from '../../../../../lib/product-utils';
 import { getGbpToUsdRate } from '../../../../../lib/exchange-rates';
+import { encryptAddress } from '../../../../../lib/address-encryption';
 
 export const dynamic = 'force-dynamic';
 
 // Bridge URL now read from bot document per-request
 const BRIDGE_KEY = process.env.BRIDGE_API_KEY || '';
 const COMMISSION_RATE = 0.10; // 10% service fee
+
+const DEFAULT_SHIPPING_METHODS: Record<string, { name: string; cost: number }> = {
+  STD: { name: 'Standard Delivery', cost: 0 },
+  EXP: { name: 'Express Delivery', cost: 5 },
+  NXT: { name: 'Next Day Delivery', cost: 10 },
+};
 
 async function getBotBySlug(slug: string) {
   await connectDB();
@@ -19,6 +26,14 @@ async function getBotBySlug(slug: string) {
 
 function getSessionId(request: NextRequest): string | null {
   return request.cookies.get('shop_session_id')?.value || null;
+}
+
+function getShippingCost(bot: any, methodCode: string): { name: string; cost: number } | null {
+  if (bot.shipping_methods && Array.isArray(bot.shipping_methods)) {
+    const method = bot.shipping_methods.find((m: any) => m.code === methodCode);
+    if (method) return { name: method.name, cost: method.cost };
+  }
+  return DEFAULT_SHIPPING_METHODS[methodCode] || null;
 }
 
 export async function POST(
@@ -39,11 +54,10 @@ export async function POST(
       return NextResponse.json({ error: 'No session' }, { status: 401 });
     }
 
-    // Check if session is linked to a Telegram account
     const telegramUserId = request.cookies.get('telegram_user_id')?.value || null;
 
     const body = await request.json();
-    const { crypto_currency, idempotency_key } = body;
+    const { crypto_currency, idempotency_key, shipping_address, shipping_method_code } = body;
 
     if (!crypto_currency || typeof crypto_currency !== 'string') {
       return NextResponse.json({ error: 'crypto_currency required' }, { status: 400 });
@@ -52,9 +66,39 @@ export async function POST(
       return NextResponse.json({ error: 'idempotency_key required' }, { status: 400 });
     }
 
+    // Validate shipping address
+    if (!shipping_address || typeof shipping_address !== 'object') {
+      return NextResponse.json({ error: 'shipping_address required' }, { status: 400 });
+    }
+    const { full_name, street, city, postcode, country } = shipping_address;
+    if (!full_name || full_name.trim().length < 2) {
+      return NextResponse.json({ error: 'Full name required (min 2 characters)' }, { status: 400 });
+    }
+    if (!street || street.trim().length < 5) {
+      return NextResponse.json({ error: 'Street address required (min 5 characters)' }, { status: 400 });
+    }
+    if (!city || city.trim().length < 2) {
+      return NextResponse.json({ error: 'City required (min 2 characters)' }, { status: 400 });
+    }
+    if (!postcode || postcode.trim().length < 3) {
+      return NextResponse.json({ error: 'Postcode required (min 3 characters)' }, { status: 400 });
+    }
+    if (!country || country.trim().length < 2) {
+      return NextResponse.json({ error: 'Country required' }, { status: 400 });
+    }
+
+    // Validate shipping method
+    if (!shipping_method_code || typeof shipping_method_code !== 'string') {
+      return NextResponse.json({ error: 'shipping_method_code required' }, { status: 400 });
+    }
+    const shippingMethod = getShippingCost(bot, shipping_method_code);
+    if (!shippingMethod) {
+      return NextResponse.json({ error: 'Invalid shipping method' }, { status: 400 });
+    }
+
     await connectDB();
 
-    // 1. Check idempotency - return existing order if already created
+    // 1. Check idempotency
     const existingOrder = await Order.findOne({ idempotency_key }).lean() as Record<string, unknown> | null;
     if (existingOrder) {
       return NextResponse.json(
@@ -105,7 +149,6 @@ export async function POST(
       const lineTotal = Math.round(currentPrice * item.quantity * 100) / 100;
       subtotal += lineTotal;
 
-      // Check stock: null/undefined = unlimited (matches Telegram bot behavior)
       const productStock = (p as any).stock as number | null | undefined;
       const variations = p.variations as Array<{ stock?: number }> | undefined;
       const hasProductStock = productStock !== undefined && productStock !== null;
@@ -126,7 +169,6 @@ export async function POST(
           );
         }
       }
-      // No stock field = unlimited = allow
 
       itemsSnapshot.push({
         product_id: item.product_id,
@@ -141,16 +183,17 @@ export async function POST(
 
     subtotal = Math.round(subtotal * 100) / 100;
 
-    // 4. Calculate totals server-side (commission deducted from vendor payout, not charged to customer)
+    // 4. Calculate totals (shipping added, commission deducted from vendor payout)
     const commission = Math.ceil(subtotal * COMMISSION_RATE * 100) / 100;
     const discount = cart.discount_amount || 0;
-    const displayAmount = Math.round((subtotal - discount) * 100) / 100;
+    const shippingCost = shippingMethod.cost;
+    const displayAmount = Math.round((subtotal - discount + shippingCost) * 100) / 100;
 
     // 5. Fetch exchange rate GBP -> USD
     const gbpUsdRate = await getGbpToUsdRate();
     const fiatAmount = Math.round(displayAmount * gbpUsdRate * 100) / 100;
 
-    // 6. Generate order identifiers + short numeric invoice ID (matches Telegram format)
+    // 6. Generate order identifiers
     const orderToken = randomUUID();
     const addressSalt = randomBytes(32).toString('hex');
     const now = new Date();
@@ -159,7 +202,6 @@ export async function POST(
     const db = mongoose.connection.db;
     if (!db) throw new Error('Database not connected');
 
-    // Generate 8-digit numeric invoice ID (same as Telegram orders)
     const ordersCol = db.collection('orders');
     let orderId = '';
     for (let attempt = 0; attempt < 100; attempt++) {
@@ -177,8 +219,16 @@ export async function POST(
       orderId = `${first}${Array.from({ length: 11 }, () => Math.floor(Math.random() * 10)).join('')}`;
     }
 
-    // 7. Atomic stock reservation - decrement stock for each item
-    // Only applies to products with explicit stock tracking (null/undefined = unlimited)
+    // 7. Encrypt shipping address
+    const addressString = `${full_name.trim()}\n${street.trim()}\n${city.trim()}\n${postcode.trim()}\n${country.trim()}`;
+    let encryptedAddress: string | null = null;
+    try {
+      encryptedAddress = encryptAddress(addressString, 'web_anonymous');
+    } catch (encErr) {
+      console.error('[Checkout] Address encryption failed:', encErr);
+    }
+
+    // 8. Atomic stock reservation
     const stockDecrements: Array<{ productId: string; quantity: number }> = [];
     try {
       for (const item of cart.items as ICartItem[]) {
@@ -189,7 +239,6 @@ export async function POST(
         const hasVariationStock = variations?.some((v: { stock?: number }) => v.stock !== undefined && v.stock !== null) ?? false;
 
         if (productStock !== undefined && productStock !== null) {
-          // Product-level stock tracking
           const result = await Product.findOneAndUpdate(
             { _id: item.product_id, stock: { $gte: item.quantity } },
             { $inc: { stock: -item.quantity } },
@@ -200,7 +249,6 @@ export async function POST(
           }
           stockDecrements.push({ productId: item.product_id, quantity: item.quantity });
         } else if (hasVariationStock) {
-          // Variation-level stock tracking
           const result = await Product.findOneAndUpdate(
             {
               _id: item.product_id,
@@ -214,10 +262,8 @@ export async function POST(
           }
           stockDecrements.push({ productId: item.product_id, quantity: item.quantity });
         }
-        // No stock field = unlimited = skip reservation
       }
     } catch (stockErr) {
-      // Rollback all stock decrements
       for (const dec of stockDecrements) {
         await Product.updateOne(
           { _id: dec.productId },
@@ -230,7 +276,7 @@ export async function POST(
       );
     }
 
-    // 8. Create order document
+    // 9. Create order document
     const orderDoc = new Order({
       _id: orderId,
       botId: botId,
@@ -255,11 +301,15 @@ export async function POST(
       commission: commission,
       commission_rate: COMMISSION_RATE,
       paymentStatus: 'pending',
+      encrypted_address: encryptedAddress,
+      delivery_method: shippingMethod.name,
+      shipping_method_code: shipping_method_code,
+      shipping_cost: shippingCost,
     });
 
     await orderDoc.save();
 
-    // 9. Call Python bridge to create SHKeeper invoice
+    // 10. Call Python bridge to create SHKeeper invoice
     let paymentData: {
       payment_address?: string;
       crypto_amount?: string;
@@ -290,7 +340,6 @@ export async function POST(
       if (bridgeRes.ok) {
         paymentData = await bridgeRes.json();
 
-        // Update order with payment details from SHKeeper
         const cryptoAmount = parseFloat(paymentData.crypto_amount || '0');
         const exchangeRateUsdCrypto = cryptoAmount > 0 ? fiatAmount / cryptoAmount : 0;
 
@@ -307,7 +356,6 @@ export async function POST(
       } else {
         const errBody = await bridgeRes.json().catch(() => ({}));
         console.error('[Checkout] Bridge invoice creation failed:', errBody);
-        // Order stays in pending - background retry can pick it up
         await Order.updateOne(
           { _id: orderId },
           { $set: { status: 'pending_payment_setup' } }
@@ -321,10 +369,10 @@ export async function POST(
       );
     }
 
-    // 10. Clear the session cart
+    // 11. Clear the session cart
     await Cart.deleteOne({ bot_id: botId, session_id: sessionId });
 
-    // 11. Build QR data
+    // 12. Build QR data
     const cryptoAmount = paymentData.crypto_amount || '0';
     const paymentAddress = paymentData.payment_address || '';
     const qrSchemes: Record<string, string> = {
@@ -361,6 +409,10 @@ export async function POST(
           : 0,
         locked_at: now.toISOString(),
         expires_at: rateLockExpiry.toISOString(),
+      },
+      shipping: {
+        method: shippingMethod.name,
+        cost: shippingCost,
       },
       tracking_url: `/shop/${slug}/order/${orderToken}`,
     });
