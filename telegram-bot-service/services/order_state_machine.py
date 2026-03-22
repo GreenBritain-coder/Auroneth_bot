@@ -163,8 +163,33 @@ async def transition_order(
     if not skip_notification:
         await _notify_buyer(db, result, new_status, tracking_info, cancellation_reason, refund_txid)
 
+    # Log stage transition for customer targeting analytics
+    await _log_stage_transition(db, result, current_status, new_status, changed_by)
+
     print(f"[OrderStateMachine] Order {order_id}: {current_status} -> {new_status} (by {changed_by})")
     return {"success": True, "order": result, "error": None}
+
+
+async def _log_stage_transition(db, order, from_status, to_status, trigger):
+    """Log order status transitions for customer targeting analytics.
+
+    Each entry records who transitioned, what changed, and when - enabling
+    queries like 'who moved from pending to paid this week' for the
+    5-segment customer targeting plan.
+    """
+    try:
+        await db.stage_transitions.insert_one({
+            "bot_id": order.get("botId"),
+            "user_id": order.get("userId"),
+            "order_id": str(order["_id"]),
+            "from_stage": from_status,
+            "to_stage": to_status,
+            "trigger": trigger,
+            "timestamp": datetime.utcnow(),
+        })
+    except Exception as e:
+        # Non-critical: don't break the order flow if analytics logging fails
+        print(f"[OrderStateMachine] Failed to log stage transition: {e}")
 
 
 async def _notify_buyer(db, order, new_status, tracking_info=None, cancellation_reason=None, refund_txid=None):
