@@ -65,7 +65,7 @@ export async function GET(
       products: normalized,
       next_cursor: hasMore ? String(page[page.length - 1]._id) : null,
     });
-    res.headers.set('Cache-Control', 'public, s-maxage=30, stale-while-revalidate=60');
+    res.headers.set('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=60');
     return res;
   } catch (error) {
     console.error('Error fetching products:', error);

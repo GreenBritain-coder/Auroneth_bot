@@ -28,6 +28,8 @@ const BotSchema = new Schema<IBot>({
   web_shop_slug: { type: String, default: '' },
 }, { strict: false }); // Allow additional fields beyond schema
 
+BotSchema.index({ web_shop_slug: 1 });
+
 // Delete existing model if it exists to force schema refresh
 if (mongoose.models.Bot) {
   delete mongoose.models.Bot;

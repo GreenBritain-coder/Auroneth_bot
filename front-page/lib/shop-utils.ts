@@ -23,7 +23,9 @@ export async function getValidatedCart(botId: string, sessionId: string) {
   }
 
   const productIds = cart.items.map((i: ICartItem) => i.product_id);
-  const products = await Product.find({ _id: { $in: productIds } }).lean();
+  const products = await Product.find({ _id: { $in: productIds } })
+    .select('name price base_price currency image_url stock variations unit')
+    .lean();
   const productMap = new Map(products.map((p: Record<string, unknown>) => [String(p._id), p]));
 
   let hasStale = false;

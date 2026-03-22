@@ -156,16 +156,19 @@ export default function ShopPage() {
       <div className="relative bg-gray-800 border-b border-gray-700">
         {shop?.banner_url && (
           <div className="absolute inset-0 overflow-hidden">
-            <img src={shop.banner_url} alt="" className="w-full h-full object-cover opacity-20" />
+            <Image src={shop.banner_url} alt="" fill className="object-cover opacity-20" unoptimized />
           </div>
         )}
         <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
           <div className="flex items-center gap-4 mb-3">
             {shop?.profile_picture_url && (
-              <img
+              <Image
                 src={shop.profile_picture_url}
                 alt={shop.name}
+                width={128}
+                height={128}
                 className="w-28 h-28 sm:w-32 sm:h-32 rounded-full object-cover border-2 border-gray-600"
+                unoptimized
               />
             )}
             <h1 className="text-4xl font-bold text-white">
@@ -258,12 +261,15 @@ export default function ShopPage() {
                       className="bg-gray-800 rounded-lg border border-gray-700 overflow-hidden hover:border-gray-600 transition-colors group"
                     >
                       <Link href={`/shop/${slug}/product/${product._id}`}>
-                        <div className="aspect-square bg-gray-700 relative overflow-hidden">
+                        <div className="aspect-square bg-gray-700 overflow-hidden relative">
                           {product.image_url ? (
-                            <img
+                            <Image
                               src={product.image_url}
                               alt={product.name}
-                              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                              fill
+                              sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
+                              className="object-cover group-hover:scale-105 transition-transform duration-300"
+                              unoptimized
                             />
                           ) : (
                             <div className="w-full h-full flex items-center justify-center text-gray-500">

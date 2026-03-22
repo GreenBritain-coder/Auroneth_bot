@@ -41,7 +41,7 @@ export async function GET(
         products_count: productsCount,
       },
     });
-    res.headers.set('Cache-Control', 'public, s-maxage=30, stale-while-revalidate=60');
+    res.headers.set('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=60');
     return res;
   } catch (error) {
     console.error('Error fetching shop config:', error);

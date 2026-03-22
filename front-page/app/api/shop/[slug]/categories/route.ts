@@ -46,7 +46,7 @@ export async function GET(
     }));
 
     const res = NextResponse.json({ categories: tree });
-    res.headers.set('Cache-Control', 'public, s-maxage=30, stale-while-revalidate=60');
+    res.headers.set('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=60');
     return res;
   } catch (error) {
     console.error('Error fetching categories:', error);

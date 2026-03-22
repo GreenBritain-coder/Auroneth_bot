@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
+import Image from 'next/image';
 import Link from 'next/link';
 
 interface CartItem {
@@ -183,7 +184,7 @@ export default function CartPage() {
             {/* Thumbnail */}
             <div className="w-16 h-16 bg-gray-700 rounded-lg overflow-hidden flex-shrink-0">
               {item.image_url ? (
-                <img src={item.image_url} alt={item.name} className="w-full h-full object-cover" />
+                <Image src={item.image_url} alt={item.name} width={64} height={64} className="w-full h-full object-cover" unoptimized />
               ) : (
                 <div className="w-full h-full flex items-center justify-center text-gray-500 text-xs">
                   No img

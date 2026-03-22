@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
+import Image from 'next/image';
 import Link from 'next/link';
 
 interface ProductDetail {
@@ -46,14 +47,10 @@ export default function ProductPage() {
   const fetchProduct = async () => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/shop/${slug}/products?t=${Date.now()}`);
+      const res = await fetch(`/api/shop/${slug}/products/${productId}?t=${Date.now()}`);
       if (res.ok) {
         const data = await res.json();
-        const found = data.products.find((p: ProductDetail) => p._id === productId);
-        if (found) {
-          // Fetch full description from products endpoint
-          setProduct(found);
-        }
+        setProduct(data.product);
       }
     } catch (err) {
       console.error('Error fetching product:', err);
@@ -160,12 +157,14 @@ export default function ProductPage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
         {/* Product Image */}
-        <div className="bg-gray-800 rounded-lg border border-gray-700 overflow-hidden aspect-square">
+        <div className="bg-gray-800 rounded-lg border border-gray-700 overflow-hidden aspect-square relative">
           {product.image_url ? (
-            <img
+            <Image
               src={product.image_url}
               alt={product.name}
-              className="w-full h-full object-cover"
+              fill
+              className="object-cover"
+              unoptimized
             />
           ) : (
             <div className="w-full h-full flex items-center justify-center text-gray-500">
