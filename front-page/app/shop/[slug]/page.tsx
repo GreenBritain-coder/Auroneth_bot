@@ -124,6 +124,7 @@ export default function ShopPage() {
       if (res.ok) {
         setToast('Added to cart');
         setTimeout(() => setToast(null), 2000);
+        window.dispatchEvent(new Event('cart-updated'));
       }
     } catch (err) {
       console.error('Error adding to cart:', err);
