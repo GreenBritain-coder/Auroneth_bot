@@ -30,8 +30,7 @@ SERVER_UUID="ug4s448ggk0wwc00s8cwg8wg"
 DESTINATION_UUID="k444gcgc84wwsgkko8scwg0g"
 PROJECT_UUID="xit2jlqhl4f8jvbpi3yb6nzp"
 ENVIRONMENT="production"
-PRIVATE_KEY_UUID="zs8k80o4cwwk4cokkckgw0k4"
-GIT_REPO="GreenBritain-coder/Auroneth_bot"
+GIT_REPO="https://github.com/GreenBritain-coder/Auroneth_bot"
 GIT_BRANCH="main"
 
 # ─── Shared Environment Variables (from vendor2 template) ───────────────────
@@ -170,17 +169,16 @@ print(json.dumps({
     'server_uuid': sys.argv[3],
     'destination_uuid': sys.argv[4],
     'environment_name': 'production',
-    'private_deploy_key_uuid': sys.argv[5],
-    'git_repository': 'git@github.com:' + sys.argv[6] + '.git',
-    'git_branch': sys.argv[7],
+    'git_repository': sys.argv[5],
+    'git_branch': sys.argv[6],
     'build_pack': 'dockerfile',
     'ports_exposes': '8000',
     'base_directory': '/telegram-bot-service',
-    'dockerfile_location': '/telegram-bot-service/Dockerfile',
+    'dockerfile_location': '/Dockerfile',
 }))
-" "$APP_NAME" "$PROJECT_UUID" "$SERVER_UUID" "$DESTINATION_UUID" "$PRIVATE_KEY_UUID" "$GIT_REPO" "$GIT_BRANCH")
+" "$APP_NAME" "$PROJECT_UUID" "$SERVER_UUID" "$DESTINATION_UUID" "$GIT_REPO" "$GIT_BRANCH")
 
-CREATE_RESPONSE=$(coolify POST /applications/private-deploy-key -d "$CREATE_PAYLOAD")
+CREATE_RESPONSE=$(coolify POST /applications/public -d "$CREATE_PAYLOAD")
 
 APP_UUID=$(echo "$CREATE_RESPONSE" | python3 -c "import sys,json; print(json.load(sys.stdin).get('uuid',''))" 2>/dev/null)
 

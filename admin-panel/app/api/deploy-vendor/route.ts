@@ -11,8 +11,7 @@ const SERVER_IP = '111.90.140.72';
 const SERVER_UUID = 'ug4s448ggk0wwc00s8cwg8wg';
 const DESTINATION_UUID = 'k444gcgc84wwsgkko8scwg0g';
 const PROJECT_UUID = 'xit2jlqhl4f8jvbpi3yb6nzp';
-const PRIVATE_KEY_UUID = 'zs8k80o4cwwk4cokkckgw0k4';
-const GIT_REPO = 'git@github.com:GreenBritain-coder/Auroneth_bot.git';
+const GIT_REPO = 'https://github.com/GreenBritain-coder/Auroneth_bot';
 const GIT_BRANCH = 'main';
 
 function getSharedEnvVars(mongoUri: string): Record<string, string> {
@@ -141,19 +140,18 @@ export async function POST(request: NextRequest) {
     });
 
     // Step 3: Create Coolify application
-    const createRes = await coolify('POST', '/applications/private-deploy-key', {
+    const createRes = await coolify('POST', '/applications/public', {
       name: appName,
       project_uuid: PROJECT_UUID,
       server_uuid: SERVER_UUID,
       destination_uuid: DESTINATION_UUID,
       environment_name: 'production',
-      private_deploy_key_uuid: PRIVATE_KEY_UUID,
       git_repository: GIT_REPO,
       git_branch: GIT_BRANCH,
       build_pack: 'dockerfile',
       ports_exposes: '8000',
       base_directory: '/telegram-bot-service',
-      dockerfile_location: '/telegram-bot-service/Dockerfile',
+      dockerfile_location: '/Dockerfile',
     });
 
     const appUuid = createRes.uuid;
