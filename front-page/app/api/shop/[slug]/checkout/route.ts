@@ -39,6 +39,9 @@ export async function POST(
       return NextResponse.json({ error: 'No session' }, { status: 401 });
     }
 
+    // Check if session is linked to a Telegram account
+    const telegramUserId = request.cookies.get('telegram_user_id')?.value || null;
+
     const body = await request.json();
     const { crypto_currency, idempotency_key } = body;
 
@@ -234,6 +237,7 @@ export async function POST(
       source: 'web',
       status: 'pending',
       web_session_id: sessionId,
+      ...(telegramUserId ? { userId: telegramUserId } : {}),
       order_token: orderToken,
       order_number: orderId,
       address_salt: addressSalt,
