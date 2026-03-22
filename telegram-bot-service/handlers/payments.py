@@ -1,6 +1,7 @@
 from aiogram import Router
 from aiogram.types import Message
 from aiohttp import web
+from bson import ObjectId
 from database.connection import get_database
 from services.commission import calculate_commission
 from datetime import datetime
@@ -179,7 +180,7 @@ async def handle_shkeeper_webhook(request: web.Request) -> web.Response:
                 bot_config = await get_bot_config()
                 if not bot_config or str(bot_config.get("_id")) != str(order.get("botId")):
                     bots_collection = db.bots
-                    bot_config = await bots_collection.find_one({"_id": order.get("botId")})
+                    bot_config = await bots_collection.find_one({"_id": ObjectId(order.get("botId")) if isinstance(order.get("botId"), str) else order.get("botId")})
 
                 if bot_config:
                     bot = Bot(token=bot_config["token"])
@@ -243,7 +244,7 @@ async def _process_auto_payout(db, order: dict, order_id: str, crypto: str, bala
     from services.shkeeper import create_payout
 
     bots_collection = db.bots
-    bot_config = await bots_collection.find_one({"_id": order.get("botId")})
+    bot_config = await bots_collection.find_one({"_id": ObjectId(order.get("botId")) if isinstance(order.get("botId"), str) else order.get("botId")})
 
     if not bot_config:
         print(f"[AutoPayout] No bot config found for botId={order.get('botId')}, skipping payout")
@@ -518,7 +519,7 @@ async def handle_cryptapi_webhook(request: web.Request) -> web.Response:
                 bot_config = await get_bot_config()
                 if not bot_config or str(bot_config.get("_id")) != str(order.get("botId")):
                     bots_collection = db.bots
-                    bot_config = await bots_collection.find_one({"_id": order.get("botId")})
+                    bot_config = await bots_collection.find_one({"_id": ObjectId(order.get("botId")) if isinstance(order.get("botId"), str) else order.get("botId")})
 
                 if bot_config:
                     invoices_collection = db.invoices

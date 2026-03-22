@@ -1,3 +1,4 @@
+from bson import ObjectId
 """
 Order state machine - centralized state transition logic.
 All order status changes MUST go through this module.
@@ -172,9 +173,10 @@ async def _notify_buyer(db, order, new_status, tracking_info=None, cancellation_
         from aiogram import Bot
 
         bots_collection = db.bots
-        bot_config = await bots_collection.find_one({"_id": order.get("botId")})
+        bot_id = order.get("botId")
+        bot_config = await bots_collection.find_one({"_id": ObjectId(bot_id) if isinstance(bot_id, str) else bot_id})
         if not bot_config:
-            print(f"[OrderStateMachine] No bot config for botId={order.get('botId')}, skipping notification")
+            print(f"[OrderStateMachine] No bot config for botId={bot_id}, skipping notification")
             return
 
         order_id = str(order["_id"])
