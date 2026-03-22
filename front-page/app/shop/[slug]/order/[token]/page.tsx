@@ -115,7 +115,7 @@ export default function OrderTrackingPage() {
   // Review state
   const [reviewRating, setReviewRating] = useState<number>(0);
   const [reviewComment, setReviewComment] = useState('');
-  const [reviewStep, setReviewStep] = useState<'idle' | 'rating' | 'comment' | 'submitted'>('idle');
+  const [reviewStep, setReviewStep] = useState<'idle' | 'comment' | 'submitted'>('idle');
   const [reviewSubmitting, setReviewSubmitting] = useState(false);
   const [reviewError, setReviewError] = useState<string | null>(null);
   const [hasExistingReview, setHasExistingReview] = useState(false);
@@ -488,14 +488,14 @@ export default function OrderTrackingPage() {
             </div>
           )}
 
-          {reviewStep === 'idle' && (
-            <div className="text-center">
-              <p className="text-gray-400 text-sm mb-4">How was your experience?</p>
-              <div className="flex justify-center gap-2 mb-4">
+          {(reviewStep === 'idle' || reviewStep === 'comment') && (
+            <div>
+              <p className="text-gray-400 text-sm mb-4 text-center">How was your experience?</p>
+              <div className="flex justify-center gap-2 mb-6">
                 {[1, 2, 3, 4, 5].map((star) => (
                   <button
                     key={star}
-                    onClick={() => { setReviewRating(star); setReviewStep('rating'); }}
+                    onClick={() => { setReviewRating(star); setReviewStep('comment'); }}
                     className={`text-3xl transition-all hover:scale-125 ${
                       star <= reviewRating ? 'text-yellow-400' : 'text-gray-600 hover:text-yellow-300'
                     }`}
@@ -504,77 +504,25 @@ export default function OrderTrackingPage() {
                   </button>
                 ))}
               </div>
-            </div>
-          )}
-
-          {reviewStep === 'rating' && (
-            <div className="text-center">
-              <p className="text-white font-medium mb-3">Rating: {reviewRating}/5</p>
-              <div className="flex justify-center gap-2 mb-6">
-                {[1, 2, 3, 4, 5].map((star) => (
+              {reviewStep === 'comment' && (
+                <>
+                  <textarea
+                    value={reviewComment}
+                    onChange={(e) => setReviewComment(e.target.value)}
+                    maxLength={500}
+                    rows={3}
+                    placeholder="Write your review..."
+                    className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent mb-4 resize-none"
+                  />
                   <button
-                    key={star}
-                    onClick={() => setReviewRating(star)}
-                    className={`text-3xl transition-all hover:scale-110 ${
-                      star <= reviewRating ? 'text-yellow-400' : 'text-gray-600'
-                    }`}
+                    onClick={() => handleSubmitReview(false)}
+                    disabled={reviewSubmitting || !reviewComment.trim()}
+                    className="w-full px-6 py-3 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    &#9733;
+                    {reviewSubmitting ? 'Submitting...' : 'Submit Review'}
                   </button>
-                ))}
-              </div>
-              <p className="text-gray-400 text-sm mb-4">Would you like to add a comment?</p>
-              <div className="flex gap-3 justify-center">
-                <button
-                  onClick={() => handleSubmitReview(true)}
-                  disabled={reviewSubmitting}
-                  className="px-6 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-600 transition-colors disabled:opacity-50"
-                >
-                  {reviewSubmitting ? 'Submitting...' : 'Skip'}
-                </button>
-                <button
-                  onClick={() => setReviewStep('comment')}
-                  className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                >
-                  Add Comment
-                </button>
-              </div>
-            </div>
-          )}
-
-          {reviewStep === 'comment' && (
-            <div>
-              <p className="text-white font-medium mb-2">Rating: {reviewRating}/5</p>
-              <div className="flex justify-center gap-1 mb-4">
-                {[1, 2, 3, 4, 5].map((star) => (
-                  <span key={star} className={`text-xl ${star <= reviewRating ? 'text-yellow-400' : 'text-gray-600'}`}>
-                    &#9733;
-                  </span>
-                ))}
-              </div>
-              <textarea
-                value={reviewComment}
-                onChange={(e) => setReviewComment(e.target.value)}
-                maxLength={500}
-                rows={3}
-                placeholder="Share your experience..."
-                className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent mb-4 resize-none"
-              />
-              <div className="flex gap-3 justify-end">
-                <button
-                  onClick={() => setReviewStep('rating')}
-                  className="px-4 py-2 text-gray-400 hover:text-white transition-colors"
-                >
-                  Back
-                </button>
-                <button
-                  onClick={() => handleSubmitReview(false)}
-                  disabled={reviewSubmitting}
-                  className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
-                >
-                  {reviewSubmitting ? 'Submitting...' : 'Submit Review'}
-                </button>
-              </div>
+                </>
+              )}
             </div>
           )}
         </div>
