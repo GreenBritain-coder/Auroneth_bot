@@ -39,6 +39,14 @@ interface Payout {
   notes?: string;
 }
 
+function formatAmount(amount: number, currency?: string): string {
+  const c = (currency || '').toUpperCase();
+  if (c === 'GBP') return `£${amount.toFixed(2)}`;
+  if (c === 'USD') return `$${amount.toFixed(2)}`;
+  if (c === 'EUR') return `€${amount.toFixed(2)}`;
+  return amount.toFixed(8);
+}
+
 export default function CommissionsPage() {
   const [summary, setSummary] = useState<EarningsSummary | null>(null);
   const [payouts, setPayouts] = useState<Payout[]>([]);
@@ -248,7 +256,7 @@ export default function CommissionsPage() {
                 {summary.isSuperAdmin ? 'Total Platform Commission' : 'Total Earned'}
               </div>
               <div className="text-2xl font-bold text-gray-900">
-                {summary.totalEarned.toFixed(8)}
+                {formatAmount(summary.totalEarned, Object.keys(summary.earningsByCurrency || {})[0])}
               </div>
               <div className="text-xs text-gray-500 mt-1">
                 {summary.isSuperAdmin 
@@ -261,7 +269,7 @@ export default function CommissionsPage() {
             <div className="bg-white p-6 rounded-lg shadow">
               <div className="text-sm text-gray-600 mb-1">Pending Payouts</div>
               <div className="text-2xl font-bold text-yellow-600">
-                {summary.totalPendingPayout.toFixed(8)}
+                {formatAmount(summary.totalPendingPayout, Object.keys(summary.earningsByCurrency || {})[0])}
               </div>
               <div className="text-xs text-gray-500 mt-1">
                 {summary.pendingPayoutCount} request{summary.pendingPayoutCount !== 1 ? 's' : ''}
@@ -271,7 +279,7 @@ export default function CommissionsPage() {
             <div className="bg-white p-6 rounded-lg shadow">
               <div className="text-sm text-gray-600 mb-1">Available for Payout</div>
               <div className="text-2xl font-bold text-green-600">
-                {summary.availableForPayout.toFixed(8)}
+                {formatAmount(summary.availableForPayout, Object.keys(summary.earningsByCurrency || {})[0])}
               </div>
             </div>
           </div>
@@ -314,17 +322,17 @@ export default function CommissionsPage() {
                           {bot.orderCount}
                         </td>
                         <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-900">
-                          {bot.totalOrderAmount.toFixed(8)}
+                          {formatAmount(bot.totalOrderAmount)}
                         </td>
                         <td className="px-4 py-4 whitespace-nowrap text-sm font-bold text-indigo-600">
-                          {bot.totalCommission.toFixed(8)}
+                          {formatAmount(bot.totalCommission)}
                         </td>
                         <td className="px-4 py-4 text-sm text-gray-500">
                           {Object.keys(bot.commissionsByCurrency).length > 0 && (
                             <div className="space-y-1">
                               {Object.entries(bot.commissionsByCurrency).map(([currency, data]) => (
                                 <div key={currency} className="text-xs">
-                                  <span className="font-medium">{currency}:</span> {data.commission.toFixed(8)} ({data.orderCount} orders)
+                                  <span className="font-medium">{currency}:</span> {formatAmount(data.commission, currency)} ({data.orderCount} orders)
                                 </div>
                               ))}
                             </div>
@@ -339,7 +347,7 @@ export default function CommissionsPage() {
                         Total Commission:
                       </td>
                       <td className="px-4 py-3 text-sm font-bold text-indigo-600">
-                        {summary.commissionsByBot.reduce((sum, bot) => sum + bot.totalCommission, 0).toFixed(8)}
+                        {formatAmount(summary.commissionsByBot.reduce((sum, bot) => sum + bot.totalCommission, 0))}
                       </td>
                       <td></td>
                     </tr>
@@ -363,15 +371,15 @@ export default function CommissionsPage() {
                       <div className="space-y-1 text-sm">
                         <div className="flex justify-between">
                           <span className="text-gray-600">Earned:</span>
-                          <span className="font-medium">{data.totalEarned.toFixed(8)}</span>
+                          <span className="font-medium">{formatAmount(data.totalEarned, currency)}</span>
                         </div>
                         <div className="flex justify-between">
                           <span className="text-gray-600">Pending:</span>
-                          <span className="font-medium text-yellow-600">{pending.toFixed(8)}</span>
+                          <span className="font-medium text-yellow-600">{formatAmount(pending, currency)}</span>
                         </div>
                         <div className="flex justify-between border-t border-gray-200 pt-1 mt-1">
                           <span className="text-gray-700 font-medium">Available:</span>
-                          <span className="font-bold text-green-600">{available.toFixed(8)}</span>
+                          <span className="font-bold text-green-600">{formatAmount(available, currency)}</span>
                         </div>
                         <div className="text-xs text-gray-500 mt-1">
                           {data.orderCount} order{data.orderCount !== 1 ? 's' : ''}
@@ -506,7 +514,7 @@ export default function CommissionsPage() {
                       </td>
                     )}
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                      {payout.amount.toFixed(8)} {payout.currency || 'BTC'}
+                      {formatAmount(payout.amount, payout.currency)} {payout.currency || 'BTC'}
                     </td>
                     <td className="px-6 py-4 text-sm text-gray-500 font-mono">
                       {payout.walletAddress || 'N/A'}
