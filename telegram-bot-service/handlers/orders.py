@@ -280,7 +280,8 @@ async def show_user_orders(message_or_callback: Union[Message, CallbackQuery]):
 async def _order_summary_line(order, products_collection):
     """Return (display_id, product_name, date_str) for an order."""
     order_id = str(order.get("_id", ""))
-    display_id = order_id[:8] if len(order_id) > 8 else order_id
+    # Use order_number for display if available (web orders), otherwise use _id
+    display_id = str(order.get("order_number", "")) or (order_id[:8] if len(order_id) > 8 else order_id)
 
     product = await get_product_info(products_collection, order.get("productId"))
     product_name = product.get("name", "Unknown") if product else "Unknown"
@@ -362,7 +363,7 @@ async def handle_order_detail_view(callback: CallbackQuery):
         await callback.message.answer("\u274c This order does not belong to you.")
         return
 
-    display_id = order_id[:8] if len(order_id) > 8 else order_id
+    display_id = str(order.get("order_number", "")) or (order_id[:8] if len(order_id) > 8 else order_id)
     status = order.get("paymentStatus", "pending")
     emoji = STATUS_EMOJI.get(status, "\u2753")
     label = STATUS_LABEL.get(status, status)
