@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import mongoose from 'mongoose';
 import connectDB from '../../../../../../lib/db';
 import { Bot, Order } from '../../../../../../lib/models';
 
@@ -29,8 +30,25 @@ export async function GET(
   }
 
   const paymentDetails = (order.paymentDetails || {}) as Record<string, unknown>;
-
   const status = (order.paymentStatus || order.status || 'pending') as string;
+
+  // Check if review exists for this order
+  const db = mongoose.connection.db!;
+  const existingReview = await db.collection('reviews').findOne({ order_id: String(order._id) });
+
+  // Payment address: try order-level field first, then nested paymentDetails
+  const paymentAddress = (order.payment_address as string) || (paymentDetails.address as string) || null;
+
+  // Build QR data if we have payment address but no stored qr_data
+  let qrData = (paymentDetails.qr_data as string) || null;
+  if (!qrData && paymentAddress && order.crypto_currency) {
+    const qrSchemes: Record<string, string> = {
+      BTC: 'bitcoin', LTC: 'litecoin', ETH: 'ethereum', DOGE: 'dogecoin', XMR: 'monero',
+    };
+    const currency = (order.crypto_currency as string).toUpperCase();
+    const scheme = qrSchemes[currency] || currency.toLowerCase();
+    qrData = `${scheme}:${paymentAddress}?amount=${order.crypto_amount || 0}`;
+  }
 
   return NextResponse.json({
     order: {
@@ -50,11 +68,12 @@ export async function GET(
       rate_lock_expires_at: order.rate_lock_expires_at,
       payment_received: status !== 'pending',
       confirmations: (paymentDetails.confirmations as number) ?? 0,
-      payment_address: (paymentDetails.address as string) ?? null,
-      qr_data: (paymentDetails.qr_data as string) ?? null,
+      payment_address: paymentAddress,
+      qr_data: qrData,
       shipping: (order as Record<string, unknown>).shipping ?? null,
       created_at: order.created_at,
       updated_at: order.updated_at,
+      has_review: !!existingReview,
     },
   });
 }

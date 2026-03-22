@@ -36,6 +36,7 @@ interface OrderData {
   shipping: { tracking_number?: string; carrier?: string; status?: string } | null;
   created_at: string;
   updated_at: string;
+  has_review?: boolean;
 }
 
 const STATUS_STEPS = [
@@ -48,30 +49,11 @@ const STATUS_STEPS = [
 ];
 
 const TERMINAL_STATUSES = ['completed', 'expired', 'cancelled'];
+const REVIEWABLE_STATUSES = ['paid', 'confirmed', 'shipped', 'delivered', 'completed'];
 
 function getStepIndex(status: string): number {
   const idx = STATUS_STEPS.findIndex((s) => s.key === status);
   return idx >= 0 ? idx : -1;
-}
-
-function getStatusColor(status: string): string {
-  switch (status) {
-    case 'pending':
-    case 'pending_payment_setup':
-      return 'text-amber-400';
-    case 'paid':
-    case 'confirmed':
-      return 'text-blue-400';
-    case 'shipped':
-    case 'delivered':
-    case 'completed':
-      return 'text-green-400';
-    case 'expired':
-    case 'cancelled':
-      return 'text-red-400';
-    default:
-      return 'text-gray-400';
-  }
 }
 
 function getStatusBadgeClasses(status: string): string {
@@ -130,6 +112,14 @@ export default function OrderTrackingPage() {
   const [copied, setCopied] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  // Review state
+  const [reviewRating, setReviewRating] = useState<number>(0);
+  const [reviewComment, setReviewComment] = useState('');
+  const [reviewStep, setReviewStep] = useState<'idle' | 'rating' | 'comment' | 'submitted'>('idle');
+  const [reviewSubmitting, setReviewSubmitting] = useState(false);
+  const [reviewError, setReviewError] = useState<string | null>(null);
+  const [hasExistingReview, setHasExistingReview] = useState(false);
+
   // Fetch full order on mount
   useEffect(() => {
     const fetchOrder = async () => {
@@ -142,6 +132,9 @@ export default function OrderTrackingPage() {
         }
         const data = await res.json();
         setOrder(data.order);
+        if (data.order?.has_review) {
+          setHasExistingReview(true);
+        }
       } catch {
         setError('Failed to load order');
       } finally {
@@ -161,7 +154,6 @@ export default function OrderTrackingPage() {
         if (!res.ok) return;
         const data = await res.json();
         if (data.status !== order.status) {
-          // Status changed - refetch full order
           const fullRes = await fetch(`/api/shop/${slug}/order/${token}`);
           if (fullRes.ok) {
             const fullData = await fullRes.json();
@@ -183,6 +175,59 @@ export default function OrderTrackingPage() {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     }
+  };
+
+  const handleSubmitReview = async (skipComment: boolean) => {
+    if (!order || reviewRating < 1) return;
+    setReviewSubmitting(true);
+    setReviewError(null);
+
+    try {
+      const res = await fetch(`/api/shop/${slug}/review`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          order_token: order.order_token,
+          rating: reviewRating,
+          comment: skipComment ? '' : reviewComment.trim(),
+        }),
+      });
+
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setReviewStep('submitted');
+        setHasExistingReview(true);
+      } else if (res.status === 409) {
+        setHasExistingReview(true);
+        setReviewStep('submitted');
+      } else {
+        setReviewError(data.error || 'Failed to submit review');
+      }
+    } catch {
+      setReviewError('Network error. Please try again.');
+    } finally {
+      setReviewSubmitting(false);
+    }
+  };
+
+  const renderStars = (count: number, interactive: boolean = false) => {
+    return (
+      <div className="flex gap-1">
+        {[1, 2, 3, 4, 5].map((star) => (
+          <button
+            key={star}
+            type="button"
+            disabled={!interactive}
+            onClick={() => interactive && setReviewRating(star)}
+            className={`text-2xl transition-colors ${
+              interactive ? 'cursor-pointer hover:scale-110' : 'cursor-default'
+            } ${star <= count ? 'text-yellow-400' : 'text-gray-600'}`}
+          >
+            &#9733;
+          </button>
+        ))}
+      </div>
+    );
   };
 
   if (loading) {
@@ -209,6 +254,7 @@ export default function OrderTrackingPage() {
   const currentStep = getStepIndex(order.status);
   const isTerminal = TERMINAL_STATUSES.includes(order.status);
   const isPending = order.status === 'pending' || order.status === 'pending_payment_setup';
+  const canReview = REVIEWABLE_STATUSES.includes(order.status) && !hasExistingReview;
 
   return (
     <div className="max-w-3xl mx-auto px-4 sm:px-6 py-8">
@@ -428,6 +474,116 @@ export default function OrderTrackingPage() {
               <span className="text-gray-400">Status:</span> {order.shipping.status}
             </p>
           )}
+        </div>
+      )}
+
+      {/* Review Section */}
+      {canReview && reviewStep !== 'submitted' && (
+        <div className="bg-gray-800 rounded-lg border border-gray-700 p-6 mb-6">
+          <h2 className="text-lg font-semibold text-white mb-4">Rate Your Order</h2>
+
+          {reviewError && (
+            <div className="bg-red-900/30 border border-red-700 rounded p-3 mb-4">
+              <p className="text-red-300 text-sm">{reviewError}</p>
+            </div>
+          )}
+
+          {reviewStep === 'idle' && (
+            <div className="text-center">
+              <p className="text-gray-400 text-sm mb-4">How was your experience?</p>
+              <div className="flex justify-center gap-2 mb-4">
+                {[1, 2, 3, 4, 5].map((star) => (
+                  <button
+                    key={star}
+                    onClick={() => { setReviewRating(star); setReviewStep('rating'); }}
+                    className={`text-3xl transition-all hover:scale-125 ${
+                      star <= reviewRating ? 'text-yellow-400' : 'text-gray-600 hover:text-yellow-300'
+                    }`}
+                  >
+                    &#9733;
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {reviewStep === 'rating' && (
+            <div className="text-center">
+              <p className="text-white font-medium mb-3">Rating: {reviewRating}/5</p>
+              <div className="flex justify-center gap-2 mb-6">
+                {[1, 2, 3, 4, 5].map((star) => (
+                  <button
+                    key={star}
+                    onClick={() => setReviewRating(star)}
+                    className={`text-3xl transition-all hover:scale-110 ${
+                      star <= reviewRating ? 'text-yellow-400' : 'text-gray-600'
+                    }`}
+                  >
+                    &#9733;
+                  </button>
+                ))}
+              </div>
+              <p className="text-gray-400 text-sm mb-4">Would you like to add a comment?</p>
+              <div className="flex gap-3 justify-center">
+                <button
+                  onClick={() => handleSubmitReview(true)}
+                  disabled={reviewSubmitting}
+                  className="px-6 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-600 transition-colors disabled:opacity-50"
+                >
+                  {reviewSubmitting ? 'Submitting...' : 'Skip'}
+                </button>
+                <button
+                  onClick={() => setReviewStep('comment')}
+                  className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                >
+                  Add Comment
+                </button>
+              </div>
+            </div>
+          )}
+
+          {reviewStep === 'comment' && (
+            <div>
+              <p className="text-white font-medium mb-2">Rating: {reviewRating}/5</p>
+              <div className="flex justify-center gap-1 mb-4">
+                {[1, 2, 3, 4, 5].map((star) => (
+                  <span key={star} className={`text-xl ${star <= reviewRating ? 'text-yellow-400' : 'text-gray-600'}`}>
+                    &#9733;
+                  </span>
+                ))}
+              </div>
+              <textarea
+                value={reviewComment}
+                onChange={(e) => setReviewComment(e.target.value)}
+                maxLength={500}
+                rows={3}
+                placeholder="Share your experience..."
+                className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent mb-4 resize-none"
+              />
+              <div className="flex gap-3 justify-end">
+                <button
+                  onClick={() => setReviewStep('rating')}
+                  className="px-4 py-2 text-gray-400 hover:text-white transition-colors"
+                >
+                  Back
+                </button>
+                <button
+                  onClick={() => handleSubmitReview(false)}
+                  disabled={reviewSubmitting}
+                  className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
+                >
+                  {reviewSubmitting ? 'Submitting...' : 'Submit Review'}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Review submitted confirmation */}
+      {(reviewStep === 'submitted' || hasExistingReview) && (
+        <div className="bg-green-900/20 border border-green-700 rounded-lg p-4 mb-6 text-center">
+          <p className="text-green-300 font-medium">Thank you for your review!</p>
         </div>
       )}
 
