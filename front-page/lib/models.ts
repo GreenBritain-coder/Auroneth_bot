@@ -150,3 +150,67 @@ CartSchema.index({ bot_id: 1, session_id: 1 }, { unique: true });
 
 export const Cart = mongoose.models.Cart || mongoose.model<ICart>('Cart', CartSchema);
 
+// Order Model (web shop orders)
+export interface IOrderItemSnapshot {
+  product_id: string;
+  name: string;
+  price: number;
+  quantity: number;
+  line_total: number;
+  image_url?: string;
+  unit?: string;
+}
+
+export interface IOrder extends Document {
+  _id: string;
+  botId: string;
+  source: 'telegram' | 'web';
+  status: string;
+  web_session_id?: string;
+  order_token?: string;
+  address_salt?: string;
+  display_amount?: number;
+  fiat_amount?: number;
+  exchange_rate_gbp_usd?: number;
+  exchange_rate_usd_crypto?: number;
+  crypto_currency?: string;
+  crypto_amount?: number;
+  idempotency_key?: string;
+  items_snapshot?: IOrderItemSnapshot[];
+  rate_locked_at?: Date;
+  rate_lock_expires_at?: Date;
+  commission?: number;
+  commission_rate?: number;
+  paymentStatus?: string;
+  paymentDetails?: Record<string, unknown>;
+  created_at?: Date;
+  updated_at?: Date;
+}
+
+const OrderSchema = new Schema<IOrder>({
+  botId: { type: String, required: true },
+  source: { type: String, enum: ['telegram', 'web'], default: 'telegram' },
+  status: { type: String, default: 'pending' },
+  web_session_id: { type: String, default: null },
+  order_token: { type: String, default: null },
+  address_salt: { type: String, default: null },
+  display_amount: { type: Number },
+  fiat_amount: { type: Number },
+  exchange_rate_gbp_usd: { type: Number },
+  exchange_rate_usd_crypto: { type: Number },
+  crypto_currency: { type: String },
+  crypto_amount: { type: Number },
+  idempotency_key: { type: String, default: null },
+  items_snapshot: { type: [Schema.Types.Mixed], default: [] },
+  rate_locked_at: { type: Date },
+  rate_lock_expires_at: { type: Date },
+  commission: { type: Number, default: 0 },
+  commission_rate: { type: Number, default: 0.10 },
+}, { strict: false, timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' } });
+
+OrderSchema.index({ order_token: 1 }, { unique: true, sparse: true });
+OrderSchema.index({ idempotency_key: 1 }, { unique: true, sparse: true });
+OrderSchema.index({ web_session_id: 1, botId: 1 });
+
+export const Order = mongoose.models.Order || mongoose.model<IOrder>('Order', OrderSchema);
+

@@ -248,7 +248,11 @@ async def main():
     
     # Setup payout routes
     payouts.setup_payout_routes(app)
-    
+
+    # Setup web bridge API routes (server-to-server, called by Next.js)
+    from api.web_bridge import setup_web_bridge_routes
+    setup_web_bridge_routes(app)
+
     # Startup and shutdown handlers
     async def startup_handler(app):
         await on_startup(bot)

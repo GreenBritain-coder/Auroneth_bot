@@ -305,12 +305,17 @@ export default function CartPage() {
           </div>
         </div>
 
-        <button
-          disabled={cart.has_out_of_stock}
-          className="w-full mt-6 px-6 py-3 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+        <Link
+          href={cart.has_out_of_stock ? '#' : `/shop/${slug}/checkout`}
+          onClick={(e) => { if (cart.has_out_of_stock) e.preventDefault(); }}
+          className={`block w-full mt-6 px-6 py-3 text-center text-white font-medium rounded-lg transition-colors ${
+            cart.has_out_of_stock
+              ? 'bg-gray-600 cursor-not-allowed opacity-50'
+              : 'bg-blue-600 hover:bg-blue-700'
+          }`}
         >
           {cart.has_out_of_stock ? 'Remove Out of Stock Items' : 'Proceed to Checkout'}
-        </button>
+        </Link>
 
         <Link
           href={`/shop/${slug}`}
