@@ -165,7 +165,7 @@ export default function ShopPage() {
               <img
                 src={shop.profile_picture_url}
                 alt={shop.name}
-                className="w-14 h-14 sm:w-16 sm:h-16 rounded-full object-cover border-2 border-gray-600"
+                className="w-28 h-28 sm:w-32 sm:h-32 rounded-full object-cover border-2 border-gray-600"
               />
             )}
             <h1 className="text-4xl font-bold text-white">
