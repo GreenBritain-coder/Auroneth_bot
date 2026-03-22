@@ -147,22 +147,32 @@ export async function POST(
     const gbpUsdRate = await getGbpToUsdRate();
     const fiatAmount = Math.round(displayAmount * gbpUsdRate * 100) / 100;
 
-    // 6. Generate order identifiers + sequential order number
+    // 6. Generate order identifiers + short numeric invoice ID (matches Telegram format)
     const orderToken = randomUUID();
     const addressSalt = randomBytes(32).toString('hex');
-    const orderId = randomUUID();
     const now = new Date();
     const rateLockExpiry = new Date(now.getTime() + 15 * 60 * 1000);
 
-    // Atomic counter for sequential order numbers (shared across web + telegram)
     const db = mongoose.connection.db;
     if (!db) throw new Error('Database not connected');
-    const counterResult = await db.collection('counters').findOneAndUpdate(
-      { _id: `order_number_${botId}` as any },
-      { $inc: { seq: 1 } },
-      { upsert: true, returnDocument: 'after' }
-    );
-    const orderNumber = counterResult?.seq || 1;
+
+    // Generate 8-digit numeric invoice ID (same as Telegram orders)
+    const ordersCol = db.collection('orders');
+    let orderId = '';
+    for (let attempt = 0; attempt < 100; attempt++) {
+      const first = Math.floor(Math.random() * 9) + 1;
+      const rest = Array.from({ length: 7 }, () => Math.floor(Math.random() * 10)).join('');
+      const candidate = `${first}${rest}`;
+      const exists = await ordersCol.findOne({ _id: candidate as any });
+      if (!exists) {
+        orderId = candidate;
+        break;
+      }
+    }
+    if (!orderId) {
+      const first = Math.floor(Math.random() * 9) + 1;
+      orderId = `${first}${Array.from({ length: 11 }, () => Math.floor(Math.random() * 10)).join('')}`;
+    }
 
     // 7. Atomic stock reservation - decrement stock for each item
     // Only applies to products with explicit stock tracking (null/undefined = unlimited)
@@ -225,7 +235,7 @@ export async function POST(
       status: 'pending',
       web_session_id: sessionId,
       order_token: orderToken,
-      order_number: orderNumber,
+      order_number: orderId,
       address_salt: addressSalt,
       amount: displayAmount,
       display_amount: displayAmount,
@@ -327,7 +337,7 @@ export async function POST(
 
     return NextResponse.json({
       order_token: orderToken,
-      order_number: orderNumber,
+      order_number: orderId,
       status: paymentAddress ? 'pending' : 'pending_payment_setup',
       payment: {
         address: paymentAddress,
