@@ -465,6 +465,16 @@ async def handle_order_detail_view(callback: CallbackQuery):
             InlineKeyboardButton(text="\U0001f504 Reorder", callback_data=f"reorder:{order_id}"),
         ])
 
+    # Rate this order button (if post-payment and not yet rated)
+    if status in ("paid", "confirmed", "shipped", "delivered", "completed"):
+        reviews_collection = db.reviews
+        existing_review = await reviews_collection.find_one({"order_id": order_id})
+        if not existing_review:
+            buttons.append([
+                InlineKeyboardButton(text="⭐ Rate this order", callback_data=f"rate_order:{order_id}"),
+            ])
+
+
     # Back to orders button always
     buttons.append([
         InlineKeyboardButton(text="\u2b05\ufe0f Back to Orders", callback_data="show_orders"),
