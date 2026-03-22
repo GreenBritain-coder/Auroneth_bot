@@ -391,115 +391,44 @@ def create_invoice(amount: float, currency: str, order_id: str, buyer_email: str
         # Try to get crypto amount from different possible fields
         amount_crypto = data.get("crypto_amount") or data.get("amount_crypto") or data.get("crypto")
         
-        # CRITICAL FIX: SHKeeper is returning USD amount in the "amount" field, not crypto amount
-        # We need to calculate crypto amount from USD amount and exchange rate
-        # According to OpenAPI spec, "amount" should be crypto, but in practice it's USD
-        # We'll always calculate: crypto_amount = usd_amount / exchange_rate
+        # SHKeeper amount field: when we send fiat=GBP, SHKeeper converts and returns
+        # the CRYPTO amount in 'amount', with exchange_rate = crypto price in USD.
+        # Validation: amount_from_api * exchange_rate ~ fiat amount converted to USD.
+        # Do NOT blindly divide by exchange_rate - check first if amount is already crypto.
         
         if not amount_crypto and amount_from_api:
             try:
                 exchange_rate = float(exchange_rate_str) if exchange_rate_str else 1.0
                 amount_value = float(amount_from_api)
+                fiat_sent = float(amount)
                 
                 print(f"[SHKeeper] === AMOUNT PARSING DEBUG ===")
                 print(f"[SHKeeper] amount_from_api: {amount_from_api} (type: {type(amount_from_api)})")
                 print(f"[SHKeeper] exchange_rate: {exchange_rate_str} (parsed: {exchange_rate})")
                 print(f"[SHKeeper] crypto_name: {crypto_name}")
-                print(f"[SHKeeper] USD amount we sent: {amount} (from function parameter)")
+                print(f"[SHKeeper] fiat sent: {amount} {fiat_currency}")
                 
-                # CRITICAL FIX: SHKeeper returns USD in "amount" field, not crypto
-                # We MUST calculate crypto amount from USD and exchange rate
-                # Validate: if amount_value matches what we sent (within 5%), it's definitely USD
-                usd_sent = float(amount)
-                amount_diff = abs(amount_value - usd_sent) / usd_sent if usd_sent > 0 else 999
+                # Determine if amount_from_api is fiat or crypto:
+                # If amount_value ~ fiat_sent (within 5%), it is fiat -> divide by rate.
+                # Otherwise, it is already crypto -> use directly.
+                fiat_diff = abs(amount_value - fiat_sent) / fiat_sent if fiat_sent > 0 else 999
                 
-                if amount_diff < 0.05:  # Within 5% of what we sent - definitely USD
-                    print(f"[SHKeeper] Amount {amount_value} matches USD we sent ({usd_sent}), calculating crypto...")
+                if fiat_diff < 0.05:  # amount matches fiat we sent -> it IS fiat
+                    print(f"[SHKeeper] Amount {amount_value} matches fiat sent ({fiat_sent}), dividing by rate...")
                     if exchange_rate > 0 and exchange_rate != 1.0:
                         amount_crypto = amount_value / exchange_rate
-                        print(f"[SHKeeper] Calculated crypto: {amount_value} USD / {exchange_rate} = {amount_crypto} {crypto_name}")
+                        print(f"[SHKeeper] Calculated crypto: {amount_value} / {exchange_rate} = {amount_crypto} {crypto_name}")
                     elif exchange_rate <= 0:
-                        # Exchange rate is missing or invalid, try to get from CoinGecko
                         print(f"[SHKeeper] WARNING: Invalid exchange rate ({exchange_rate}), fetching from CoinGecko...")
                     elif exchange_rate == 1.0 and crypto_name in ("USDT", "USDC"):
-                        # Stablecoins have 1:1 rate with USD - this is correct
                         amount_crypto = amount_value
                         print(f"[SHKeeper] Stablecoin {crypto_name}: 1:1 rate, amount = {amount_crypto}")
-                    elif exchange_rate == 1.0:
-                        # For non-stablecoins, 1.0 rate is likely missing/invalid
-                        print(f"[SHKeeper] WARNING: Exchange rate 1.0 for {crypto_name}, fetching from CoinGecko...")
-                        try:
-                            from utils.currency_converter import get_exchange_rate
-                            # Get BTC price in USD
-                            btc_rate = get_exchange_rate("btc", "usd")
-                            if btc_rate and btc_rate > 0:
-                                amount_crypto = amount_value / btc_rate
-                                print(f"[SHKeeper] Used CoinGecko rate: {amount_value} USD / {btc_rate} = {amount_crypto} {crypto_name}")
-                            else:
-                                print(f"[SHKeeper] ERROR: Could not get exchange rate, using fallback calculation")
-                                # Last resort: use approximate BTC price
-                                approximate_btc_price = 60000  # Approximate BTC price
-                                amount_crypto = amount_value / approximate_btc_price
-                                print(f"[SHKeeper] Used approximate rate: {amount_value} USD / {approximate_btc_price} = {amount_crypto} {crypto_name}")
-                        except Exception as e:
-                            print(f"[SHKeeper] Error fetching exchange rate: {e}")
-                            # Last resort: use approximate BTC price
-                            approximate_btc_price = 60000
-                            amount_crypto = amount_value / approximate_btc_price
-                            print(f"[SHKeeper] Used approximate rate (fallback): {amount_value} USD / {approximate_btc_price} = {amount_crypto} {crypto_name}")
-                    else:
-                        print(f"[SHKeeper] ERROR: Invalid exchange rate {exchange_rate}, cannot calculate crypto amount!")
-                        amount_crypto = amount_value  # Fallback
-                elif crypto_name == "BTC" and amount_value > 1.0 and exchange_rate > 1000:
-                    # For BTC, if amount > 1 and exchange rate is high, it's likely USD
-                    print(f"[SHKeeper] BTC amount {amount_value} with high exchange rate suggests USD, calculating...")
-                    amount_crypto = amount_value / exchange_rate
-                    print(f"[SHKeeper] Calculated: {amount_value} USD / {exchange_rate} = {amount_crypto} BTC")
-                elif crypto_name == "BTC" and amount_value < 0.00000001:
-                    # Too small to be valid BTC
-                    print(f"[SHKeeper] Amount {amount_value} too small, treating as USD and calculating...")
-                    if exchange_rate > 0:
-                        amount_crypto = amount_value / exchange_rate
-                    else:
-                        amount_crypto = amount_value
-                elif crypto_name == "BTC" and amount_value > 0.00000001 and amount_value < 1.0:
-                    # This could be crypto, but validate against exchange rate
-                    # If exchange rate is very high (> 1000), small amounts are likely crypto
-                    if exchange_rate > 1000:
-                        amount_crypto = amount_value
-                        print(f"[SHKeeper] Using as crypto amount: {amount_crypto} BTC")
-                    else:
-                        # Low exchange rate, might be USD
-                        amount_crypto = amount_value / exchange_rate if exchange_rate > 0 else amount_value
-                        print(f"[SHKeeper] Low exchange rate, calculating: {amount_value} / {exchange_rate} = {amount_crypto} BTC")
                 else:
-                    # For other cryptos (LTC, ETH, etc.), always calculate from exchange rate if available
-                    # SHKeeper returns USD in "amount" field for all cryptos
-                    if exchange_rate > 1.0:
-                        # Exchange rate is valid, calculate crypto amount
-                        amount_crypto = amount_value / exchange_rate
-                        print(f"[SHKeeper] Calculating {crypto_name} from exchange rate: {amount_value} USD / {exchange_rate} = {amount_crypto} {crypto_name}")
-                    elif exchange_rate == 1.0 or exchange_rate <= 0:
-                        # Exchange rate is missing or invalid, try to get from CoinGecko
-                        print(f"[SHKeeper] WARNING: Invalid exchange rate for {crypto_name} ({exchange_rate}), fetching from CoinGecko...")
-                        try:
-                            from utils.currency_converter import get_exchange_rate
-                            # Get crypto price in USD
-                            crypto_rate = get_exchange_rate(crypto_name.lower(), "usd")
-                            if crypto_rate and crypto_rate > 0:
-                                amount_crypto = amount_value / crypto_rate
-                                print(f"[SHKeeper] Used CoinGecko rate for {crypto_name}: {amount_value} USD / {crypto_rate} = {amount_crypto} {crypto_name}")
-                            else:
-                                print(f"[SHKeeper] ERROR: Could not get {crypto_name} exchange rate from CoinGecko")
-                                # Don't use as-is - this would be wrong
-                                amount_crypto = None
-                        except Exception as e:
-                            print(f"[SHKeeper] Error fetching {crypto_name} exchange rate: {e}")
-                            amount_crypto = None
-                    else:
-                        # Exchange rate is 1 or invalid, don't use as-is
-                        print(f"[SHKeeper] WARNING: Invalid exchange rate for {crypto_name}, cannot calculate amount")
-                        amount_crypto = None
+                    # amount_from_api is already the crypto amount
+                    amount_crypto = amount_value
+                    print(f"[SHKeeper] Amount {amount_value} differs from fiat sent ({fiat_sent}), using as crypto directly")
+                    implied_usd = amount_value * exchange_rate
+                    print(f"[SHKeeper] Validation: {amount_value} {crypto_name} * {exchange_rate} = ${implied_usd:.4f} USD")
             except (ValueError, TypeError) as e:
                 print(f"[SHKeeper] Error parsing amount: {e}, attempting fallback calculation...")
                 try:
