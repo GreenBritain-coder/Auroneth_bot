@@ -11,8 +11,9 @@ const PRIVATE_KEY_UUID = 'zs8k80o4cwwk4cokkckgw0k4';
 const GIT_REPO = 'git@github.com:GreenBritain-coder/Auroneth_bot.git';
 const GIT_BRANCH = 'main';
 
-const SHARED_ENV_VARS: Record<string, string> = {
-  MONGO_URI: process.env.MONGO_URI || '',
+function getSharedEnvVars(mongoUri: string): Record<string, string> {
+  return {
+  MONGO_URI: mongoUri,
   SHKEEPER_API_URL: 'https://shkeeper.auroneth.info',
   SHKEEPER_API_KEY: 'knZIhomXoB5o61cgfYdRkQ',
   CRYPTAPI_BTC_WALLET_ADDRESS: 'bc1q7ldfwwz33ejtedntamrrpq4dtw9y2k5gja4n',
@@ -21,7 +22,8 @@ const SHARED_ENV_VARS: Record<string, string> = {
   ADDRESS_ENCRYPTION_KEY: process.env.ADDRESS_ENCRYPTION_KEY || 'pPELJJX8LjZwWK-FVmIyb8j4sLlh5BvCr3Yf9WaA',
   PLATFORM_COMMISSION_RATE: '0.10',
   PORT: '8000',
-};
+  };
+}
 
 async function coolify(method: string, endpoint: string, body?: object) {
   const res = await fetch(`${COOLIFY_API}${endpoint}`, {
@@ -62,11 +64,15 @@ export async function POST(request: NextRequest) {
     // Step 1: Auto-detect next vendor number
     const apps = await coolify('GET', '/applications');
     const appList = Array.isArray(apps) ? apps : apps.data || [];
-    const vendorApps = appList.filter((a: any) =>
-      (a.name || '').includes('telegram-bot-service-vendor')
-    );
-    const existingCount = vendorApps.length + 1; // +1 for original vendor1
-    const vendorNum = existingCount + 1;
+    // Find the highest existing vendor number
+    const vendorNums = appList
+      .map((a: any) => {
+        const match = (a.name || '').match(/telegram-bot-service-vendor(\d+)/);
+        return match ? parseInt(match[1], 10) : 0;
+      })
+      .filter((n: number) => n > 0);
+    vendorNums.push(1); // original bot.auroneth.info = vendor1
+    const vendorNum = Math.max(...vendorNums) + 1;
     const appName = `telegram-bot-service-vendor${vendorNum}`;
     const domain = `bot${vendorNum}.auroneth.info`;
     const fqdn = `https://${domain}`;
@@ -74,7 +80,7 @@ export async function POST(request: NextRequest) {
     steps.push({
       step: 'Detect vendor number',
       status: 'done',
-      detail: `Vendor #${vendorNum} (${existingCount} existing)`,
+      detail: `Vendor #${vendorNum} (${vendorNums.length} existing)`,
     });
 
     // Step 2: Create bot in MongoDB
@@ -164,8 +170,11 @@ export async function POST(request: NextRequest) {
     });
 
     // Step 4: Set environment variables
+    if (!process.env.MONGO_URI) {
+      throw new Error('MONGO_URI environment variable is not set on admin panel');
+    }
     const allEnvVars: Record<string, string> = {
-      ...SHARED_ENV_VARS,
+      ...getSharedEnvVars(process.env.MONGO_URI),
       BOT_TOKEN: botToken,
       WEBHOOK_URL: fqdn,
       bridge_url: fqdn,

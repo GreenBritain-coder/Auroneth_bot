@@ -50,6 +50,8 @@ const CategorySchema = new Schema<ICategory>({
   order: { type: Number, default: 0 },
 });
 
+CategorySchema.index({ bot_ids: 1 });
+
 export const Category = mongoose.models.Category || mongoose.model<ICategory>('Category', CategorySchema);
 
 // Subcategory Model
@@ -69,6 +71,8 @@ const SubcategorySchema = new Schema<ISubcategory>({
   bot_ids: { type: [String], default: [] },
   order: { type: Number, default: 0 },
 });
+
+SubcategorySchema.index({ bot_ids: 1 });
 
 export const Subcategory = mongoose.models.Subcategory || mongoose.model<ISubcategory>('Subcategory', SubcategorySchema);
 
@@ -107,6 +111,10 @@ const ProductSchema = new Schema<IProduct>({
   increment_amount: { type: Number },
   variations: { type: [Schema.Types.Mixed], default: [] },
 });
+
+ProductSchema.index({ bot_ids: 1 });
+ProductSchema.index({ bot_ids: 1, category_id: 1 });
+ProductSchema.index({ bot_ids: 1, subcategory_id: 1 });
 
 export const Product = mongoose.models.Product || mongoose.model<IProduct>('Product', ProductSchema);
 

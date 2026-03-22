@@ -66,19 +66,22 @@ echo ""
 echo "[1/6] Detecting next vendor number..."
 
 APPS_JSON=$(coolify GET /applications)
-# Count existing telegram-bot-service-vendor* apps
-EXISTING_COUNT=$(echo "$APPS_JSON" | python3 -c "
-import sys, json
+# Find the highest existing vendor number
+VENDOR_NUM=$(echo "$APPS_JSON" | python3 -c "
+import sys, json, re
 apps = json.load(sys.stdin)
-# Handle both list and paginated response
 if isinstance(apps, dict) and 'data' in apps:
     apps = apps['data']
-count = sum(1 for a in apps if 'telegram-bot-service-vendor' in (a.get('name','') or ''))
-# Also count the original (vendor1 = bot.auroneth.info)
-print(count + 1)
-" 2>/dev/null || echo "3")
-
-VENDOR_NUM=$((EXISTING_COUNT + 1))
+nums = []
+for a in apps:
+    name = a.get('name','') or ''
+    m = re.search(r'telegram-bot-service-vendor(\d+)', name)
+    if m:
+        nums.append(int(m.group(1)))
+# Original bot.auroneth.info = vendor1, so start from at least 1
+nums.append(1)
+print(max(nums) + 1)
+" 2>/dev/null || echo "4")
 APP_NAME="telegram-bot-service-vendor${VENDOR_NUM}"
 DOMAIN="bot${VENDOR_NUM}.auroneth.info"
 FQDN="https://${DOMAIN}"
@@ -92,7 +95,10 @@ echo "  Domain: ${DOMAIN}"
 echo ""
 echo "[2/6] Creating bot record in MongoDB..."
 
-BOT_ID=$(MONGO_URI="$MONGO_URI" DEPLOY_BOT_TOKEN="$BOT_TOKEN" DEPLOY_VENDOR_NAME="$VENDOR_NAME" node -e '
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_DIR="$(dirname "$SCRIPT_DIR")"
+
+BOT_ID=$(MONGO_URI="$MONGO_URI" DEPLOY_BOT_TOKEN="$BOT_TOKEN" DEPLOY_VENDOR_NAME="$VENDOR_NAME" NODE_PATH="$REPO_DIR/admin-panel/node_modules" node -e '
 const mongoose = require("mongoose");
 
 const BotSchema = new mongoose.Schema({
@@ -156,20 +162,25 @@ echo "  Bot ID: ${BOT_ID}"
 echo ""
 echo "[3/6] Creating Coolify application..."
 
-CREATE_RESPONSE=$(coolify POST /applications/private-deploy-key -d "{
-  \"name\": \"${APP_NAME}\",
-  \"project_uuid\": \"${PROJECT_UUID}\",
-  \"server_uuid\": \"${SERVER_UUID}\",
-  \"destination_uuid\": \"${DESTINATION_UUID}\",
-  \"environment_name\": \"${ENVIRONMENT}\",
-  \"private_deploy_key_uuid\": \"${PRIVATE_KEY_UUID}\",
-  \"git_repository\": \"git@github.com:${GIT_REPO}.git\",
-  \"git_branch\": \"${GIT_BRANCH}\",
-  \"build_pack\": \"dockerfile\",
-  \"ports_exposes\": \"8000\",
-  \"base_directory\": \"/telegram-bot-service\",
-  \"dockerfile_location\": \"/telegram-bot-service/Dockerfile\"
-}")
+CREATE_PAYLOAD=$(python3 -c "
+import json, sys
+print(json.dumps({
+    'name': sys.argv[1],
+    'project_uuid': sys.argv[2],
+    'server_uuid': sys.argv[3],
+    'destination_uuid': sys.argv[4],
+    'environment_name': 'production',
+    'private_deploy_key_uuid': sys.argv[5],
+    'git_repository': 'git@github.com:' + sys.argv[6] + '.git',
+    'git_branch': sys.argv[7],
+    'build_pack': 'dockerfile',
+    'ports_exposes': '8000',
+    'base_directory': '/telegram-bot-service',
+    'dockerfile_location': '/telegram-bot-service/Dockerfile',
+}))
+" "$APP_NAME" "$PROJECT_UUID" "$SERVER_UUID" "$DESTINATION_UUID" "$PRIVATE_KEY_UUID" "$GIT_REPO" "$GIT_BRANCH")
+
+CREATE_RESPONSE=$(coolify POST /applications/private-deploy-key -d "$CREATE_PAYLOAD")
 
 APP_UUID=$(echo "$CREATE_RESPONSE" | python3 -c "import sys,json; print(json.load(sys.stdin).get('uuid',''))" 2>/dev/null)
 
