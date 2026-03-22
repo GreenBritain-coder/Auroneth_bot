@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useRef } from 'react';
 import { useParams } from 'next/navigation';
+import Image from 'next/image';
 import Link from 'next/link';
 
 interface OrderItem {
@@ -412,10 +413,13 @@ export default function OrderTrackingPage() {
           {order.items_snapshot.map((item, i) => (
             <div key={i} className="flex items-center gap-4">
               {item.image_url && (
-                <img
+                <Image
                   src={item.image_url}
                   alt={item.name}
+                  width={48}
+                  height={48}
                   className="w-12 h-12 rounded object-cover bg-gray-700 flex-shrink-0"
+                  unoptimized
                 />
               )}
               <div className="flex-1 min-w-0">
