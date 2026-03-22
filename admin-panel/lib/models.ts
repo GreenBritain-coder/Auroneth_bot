@@ -43,7 +43,6 @@ export interface IBot extends Document {
   web_shop_enabled?: boolean; // Whether web shop is enabled for this bot
   web_shop_slug?: string; // URL-safe slug for the web shop (e.g., "my-shop")
   web_shop_description?: string; // Description shown on the web shop
-  bridge_url?: string; // Bot service URL (e.g., "https://bot3.auroneth.info")
 }
 
 const BotSchema = new Schema<IBot>({
@@ -76,6 +75,9 @@ const BotSchema = new Schema<IBot>({
   payment_methods: { type: [String], default: ['BTC', 'LTC'] }, // Supported payment methods (BTC/LTC only)
   cut_off_time: { type: String }, // Cut-off time in HH:MM format (e.g., "14:30")
   custom_buttons: { type: [Schema.Types.Mixed], default: [] }, // Custom menu buttons with label, message, type, url, order, enabled
+  web_shop_enabled: { type: Boolean, default: false },
+  web_shop_slug: { type: String, default: '' },
+  web_shop_description: { type: String, default: '' },
 }, { strict: false }); // Allow additional fields beyond schema
 
 // Delete existing model if it exists to force schema refresh

@@ -32,7 +32,7 @@ export async function POST(
     }
 
     const botId = String(bot._id);
-    const bridgeUrl = (bot as any).bridge_url || (bot as any).webhook_url || process.env.BRIDGE_API_URL || "http://localhost:8000";
+    const bridgeUrl = (bot as any).webhook_url || process.env.BRIDGE_API_URL || "http://localhost:8000";
     const sessionId = getSessionId(request);
     if (!sessionId) {
       return NextResponse.json({ error: 'No session' }, { status: 401 });
@@ -137,10 +137,10 @@ export async function POST(
 
     subtotal = Math.round(subtotal * 100) / 100;
 
-    // 4. Calculate totals server-side
-    const serviceFee = Math.ceil(subtotal * COMMISSION_RATE * 100) / 100;
+    // 4. Calculate totals server-side (commission deducted from vendor payout, not charged to customer)
+    const commission = Math.ceil(subtotal * COMMISSION_RATE * 100) / 100;
     const discount = cart.discount_amount || 0;
-    const displayAmount = Math.round((subtotal + serviceFee - discount) * 100) / 100;
+    const displayAmount = Math.round((subtotal - discount) * 100) / 100;
 
     // 5. Fetch exchange rate GBP -> USD
     const gbpUsdRate = await getGbpToUsdRate();
@@ -208,7 +208,7 @@ export async function POST(
       items_snapshot: itemsSnapshot,
       rate_locked_at: now,
       rate_lock_expires_at: rateLockExpiry,
-      commission: serviceFee,
+      commission: commission,
       commission_rate: COMMISSION_RATE,
       paymentStatus: 'pending',
     });

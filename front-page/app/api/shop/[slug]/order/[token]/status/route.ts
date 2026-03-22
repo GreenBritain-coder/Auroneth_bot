@@ -32,9 +32,11 @@ export async function GET(
 
   const paymentDetails = (order.paymentDetails || {}) as Record<string, unknown>;
 
+  const status = (order.paymentStatus || order.status || 'pending') as string;
+
   return NextResponse.json({
-    status: order.status,
-    payment_received: order.status !== 'pending' && order.status !== 'pending_payment_setup',
+    status,
+    payment_received: status !== 'pending',
     confirmations: (paymentDetails.confirmations as number) ?? 0,
     updated_at: order.updated_at,
   });

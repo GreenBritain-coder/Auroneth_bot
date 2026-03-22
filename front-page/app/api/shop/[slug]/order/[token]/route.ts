@@ -30,10 +30,12 @@ export async function GET(
 
   const paymentDetails = (order.paymentDetails || {}) as Record<string, unknown>;
 
+  const status = (order.paymentStatus || order.status || 'pending') as string;
+
   return NextResponse.json({
     order: {
       order_token: order.order_token,
-      status: order.status,
+      status,
       items_snapshot: order.items_snapshot,
       display_amount: order.display_amount,
       fiat_amount: order.fiat_amount,
@@ -45,7 +47,7 @@ export async function GET(
       commission_rate: order.commission_rate,
       rate_locked_at: order.rate_locked_at,
       rate_lock_expires_at: order.rate_lock_expires_at,
-      payment_received: order.status !== 'pending' && order.status !== 'pending_payment_setup',
+      payment_received: status !== 'pending',
       confirmations: (paymentDetails.confirmations as number) ?? 0,
       payment_address: (paymentDetails.address as string) ?? null,
       qr_data: (paymentDetails.qr_data as string) ?? null,

@@ -19,7 +19,7 @@ export async function getSessionId(): Promise<string | null> {
 export async function getValidatedCart(botId: string, sessionId: string) {
   const cart = await Cart.findOne({ bot_id: botId, session_id: sessionId });
   if (!cart || cart.items.length === 0) {
-    return { cart, items: [], subtotal: 0, service_fee: 0, discount: 0, total: 0, item_count: 0, has_stale_prices: false, has_out_of_stock: false };
+    return { cart, items: [], subtotal: 0, discount: 0, total: 0, item_count: 0, has_stale_prices: false, has_out_of_stock: false };
   }
 
   const productIds = cart.items.map((i: ICartItem) => i.product_id);
@@ -89,15 +89,13 @@ export async function getValidatedCart(botId: string, sessionId: string) {
   }
 
   subtotal = Math.round(subtotal * 100) / 100;
-  const serviceFee = Math.ceil(subtotal * 0.10 * 100) / 100;
   const discount = cart.discount_amount || 0;
-  const total = Math.round((subtotal + serviceFee - discount) * 100) / 100;
+  const total = Math.round((subtotal - discount) * 100) / 100;
 
   return {
     cart,
     items: validatedItems,
     subtotal,
-    service_fee: serviceFee,
     discount,
     discount_code: cart.discount_code || null,
     total: Math.max(total, 0),

@@ -18,7 +18,6 @@ interface CartItem {
 interface CartData {
   items: CartItem[];
   subtotal: number;
-  service_fee: number;
   discount: number;
   discount_code?: string | null;
   total: number;
@@ -397,10 +396,6 @@ export default function CheckoutPage() {
           <div className="flex justify-between text-gray-300">
             <span>Subtotal</span>
             <span>{currencySymbol}{cart.subtotal.toFixed(2)}</span>
-          </div>
-          <div className="flex justify-between text-gray-300">
-            <span>Service Fee (10%)</span>
-            <span>{currencySymbol}{cart.service_fee.toFixed(2)}</span>
           </div>
           {cart.discount > 0 && (
             <div className="flex justify-between text-green-400">

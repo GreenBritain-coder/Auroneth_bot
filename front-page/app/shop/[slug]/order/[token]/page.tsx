@@ -392,12 +392,6 @@ export default function OrderTrackingPage() {
               {order.items_snapshot.reduce((sum, item) => sum + item.line_total, 0).toFixed(2)}
             </span>
           </div>
-          {order.commission > 0 && (
-            <div className="flex justify-between text-gray-300">
-              <span>Service Fee ({(order.commission_rate * 100).toFixed(0)}%)</span>
-              <span>{'\u00a3'}{order.commission.toFixed(2)}</span>
-            </div>
-          )}
           <div className="border-t border-gray-700 pt-2 flex justify-between text-white font-semibold">
             <span>Total</span>
             <span>{'\u00a3'}{order.display_amount.toFixed(2)}</span>

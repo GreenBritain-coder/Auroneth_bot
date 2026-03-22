@@ -21,7 +21,7 @@ export async function GET(
     }
 
     const botId = String(bot._id);
-    const bridgeUrl = (bot as any).bridge_url || (bot as any).webhook_url || process.env.BRIDGE_API_URL || "http://localhost:8000";
+    const bridgeUrl = (bot as any).webhook_url || process.env.BRIDGE_API_URL || "http://localhost:8000";
 
     // Call Python bridge to get payment methods from SHKeeper
     const res = await fetch(`${bridgeUrl}/api/web/${botId}/payment-methods`, {

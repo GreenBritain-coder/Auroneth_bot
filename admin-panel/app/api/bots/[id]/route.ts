@@ -180,6 +180,15 @@ export async function PATCH(
     if ('custom_buttons' in updateData) {
       existingBot.markModified('custom_buttons');
     }
+    if ('web_shop_enabled' in updateData) {
+      existingBot.markModified('web_shop_enabled');
+    }
+    if ('web_shop_slug' in updateData) {
+      existingBot.markModified('web_shop_slug');
+    }
+    if ('web_shop_description' in updateData) {
+      existingBot.markModified('web_shop_description');
+    }
 
     // Save the bot to ensure all changes are persisted
     await existingBot.save();

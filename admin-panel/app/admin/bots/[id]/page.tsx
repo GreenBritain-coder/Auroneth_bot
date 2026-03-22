@@ -58,7 +58,6 @@ export default function EditBotPage() {
     web_shop_enabled: false,
     web_shop_slug: '',
     web_shop_description: '',
-    bridge_url: '',
   });
   const [updatingProfilePic, setUpdatingProfilePic] = useState(false);
   const [userRole, setUserRole] = useState<string | null>(null);
@@ -345,7 +344,6 @@ export default function EditBotPage() {
           web_shop_enabled: botData.web_shop_enabled || false,
           web_shop_slug: botData.web_shop_slug || '',
           web_shop_description: botData.web_shop_description || '',
-          bridge_url: botData.bridge_url || '',
         });
       } else {
         setError('Failed to load bot');
@@ -513,7 +511,6 @@ export default function EditBotPage() {
         web_shop_enabled: formData.web_shop_enabled,
         web_shop_slug: formData.web_shop_slug || formData.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''),
         web_shop_description: formData.web_shop_description || '',
-        bridge_url: formData.bridge_url || '',
       };
 
       // Only include categories and featured if user is super-admin
@@ -1505,19 +1502,6 @@ export default function EditBotPage() {
               />
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700">Bridge URL</label>
-              <input
-                type="text"
-                className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
-                placeholder="https://bot3.auroneth.info"
-                value={formData.bridge_url}
-                onChange={(e) => setFormData({ ...formData, bridge_url: e.target.value })}
-              />
-              <p className="mt-1 text-sm text-gray-500">
-                The bot service URL used by the web shop to communicate with the bot backend.
-              </p>
-            </div>
           </div>
         </div>
 

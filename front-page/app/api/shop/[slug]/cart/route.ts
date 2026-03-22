@@ -30,7 +30,7 @@ export async function GET(
 
     const sessionId = getSessionId(request);
     if (!sessionId) {
-      return NextResponse.json({ cart: { items: [], subtotal: 0, service_fee: 0, discount: 0, total: 0, currency: 'GBP', item_count: 0, has_stale_prices: false, has_out_of_stock: false } });
+      return NextResponse.json({ cart: { items: [], subtotal: 0, discount: 0, total: 0, currency: 'GBP', item_count: 0, has_stale_prices: false, has_out_of_stock: false } });
     }
 
     const validated = await getValidatedCart(botId, sessionId);
