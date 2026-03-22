@@ -75,19 +75,48 @@ export default function CheckoutPage() {
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const idempotencyKeyRef = useRef<string>('');
 
-  // Generate idempotency key once
+  // Generate or restore idempotency key from sessionStorage
   useEffect(() => {
-    idempotencyKeyRef.current = crypto.randomUUID();
-  }, []);
+    const storageKey = `checkout_idempotency_${slug}`;
+    const existing = sessionStorage.getItem(storageKey);
+    if (existing) {
+      idempotencyKeyRef.current = existing;
+    } else {
+      const newKey = crypto.randomUUID();
+      idempotencyKeyRef.current = newKey;
+      sessionStorage.setItem(storageKey, newKey);
+    }
+  }, [slug]);
 
-  // Fetch cart and payment methods on mount
+  // Fetch cart, payment methods, and check for pending order on mount
   useEffect(() => {
     const init = async () => {
       try {
-        const [cartRes, methodsRes] = await Promise.all([
+        const [cartRes, methodsRes, pendingRes] = await Promise.all([
           fetch(`/api/shop/${slug}/cart?t=${Date.now()}`),
           fetch(`/api/shop/${slug}/payment-methods`),
+          fetch(`/api/shop/${slug}/order/pending`),
         ]);
+
+        // Check for pending order first — resume if found
+        if (pendingRes.ok) {
+          const pendingData = await pendingRes.json();
+          if (pendingData.order && pendingData.order.payment?.address) {
+            setCheckout(pendingData.order);
+            setStep('paying');
+            // Still load cart for display
+            if (cartRes.ok) {
+              const cartData = await cartRes.json();
+              if (cartData.cart) setCart(cartData.cart);
+            }
+            if (methodsRes.ok) {
+              const methodsData = await methodsRes.json();
+              setMethods(methodsData.methods || []);
+            }
+            setLoading(false);
+            return;
+          }
+        }
 
         if (cartRes.ok) {
           const cartData = await cartRes.json();
@@ -188,16 +217,22 @@ export default function CheckoutPage() {
       if (!res.ok) {
         setError(data.error || 'Checkout failed');
         // Generate new key for retry
-        idempotencyKeyRef.current = crypto.randomUUID();
+        const newKey = crypto.randomUUID();
+        idempotencyKeyRef.current = newKey;
+        sessionStorage.setItem(`checkout_idempotency_${slug}`, newKey);
         return;
       }
 
       setCheckout(data);
       setStep('paying');
+      // Clear idempotency key — next checkout will get a fresh one
+      sessionStorage.removeItem(`checkout_idempotency_${slug}`);
     } catch (err) {
       console.error('Checkout error:', err);
       setError('Network error. Please try again.');
-      idempotencyKeyRef.current = crypto.randomUUID();
+      const retryKey = crypto.randomUUID();
+      idempotencyKeyRef.current = retryKey;
+      sessionStorage.setItem(`checkout_idempotency_${slug}`, retryKey);
     } finally {
       setSubmitting(false);
     }
