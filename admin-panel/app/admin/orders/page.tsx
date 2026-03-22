@@ -8,6 +8,7 @@ interface Order {
   botId: string;
   botName?: string;
   productId: string;
+  productName?: string;
   userId: string;
   paymentStatus: string;
   amount: number;
@@ -17,6 +18,9 @@ interface Order {
   encrypted_address?: string;
   notes?: string;
   tracking_info?: string;
+  source?: 'web' | 'telegram';
+  order_number?: number;
+  order_token?: string;
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -254,7 +258,12 @@ export default function OrdersPage() {
               {/* Row 1: ID, Bot, Date, Status */}
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-3 text-sm">
-                  <span className="font-mono font-semibold text-gray-900">#{orderId.substring(0, 8)}</span>
+                  <span className="font-mono font-semibold text-gray-900">
+                    {order.order_number ? `#${order.order_number}` : `#${orderId.substring(0, 8)}`}
+                  </span>
+                  {order.source === 'web' && (
+                    <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-50 text-blue-700 border border-blue-200">WEB</span>
+                  )}
                   <span className="text-gray-400">&middot;</span>
                   <span className="text-gray-600">{order.botName || 'Bot'}</span>
                   <span className="text-gray-400">&middot;</span>
@@ -265,9 +274,16 @@ export default function OrdersPage() {
                 </span>
               </div>
 
-              {/* Row 2: User + Amounts */}
+              {/* Row 2: User/Product + Amounts */}
               <div className="flex items-center justify-between text-sm mb-3">
-                <span className="text-gray-500">User: <span className="font-mono text-gray-700">{order.userId || 'N/A'}</span></span>
+                <div className="flex items-center gap-3">
+                  <span className="text-gray-500">
+                    {order.source === 'web' ? 'Web order' : <>User: <span className="font-mono text-gray-700">{order.userId || 'N/A'}</span></>}
+                  </span>
+                  {order.productName && (
+                    <span className="text-gray-500 truncate max-w-[200px]">{order.productName}</span>
+                  )}
+                </div>
                 <div className="flex items-center gap-4">
                   <span className="text-gray-700">
                     <span className="text-gray-400 text-xs">Amount:</span>{' '}

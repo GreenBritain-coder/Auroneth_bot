@@ -81,12 +81,6 @@ export async function GET(request: NextRequest) {
       botNamesMap[botId] = bot.name || 'Unknown Bot';
     });
     
-    console.log(`Found ${orders.length} orders from database`);
-    if (orders.length > 0) {
-      console.log('Sample order keys:', Object.keys(orders[0]));
-      console.log('Sample order _id:', orders[0]._id, typeof orders[0]._id);
-    }
-    
     // Fetch product names for all unique product IDs in order items
     const { Product } = await import('../../../lib/models');
     const allProductIds = new Set<string>();
@@ -94,6 +88,13 @@ export async function GET(request: NextRequest) {
       if (o.productId) allProductIds.add(String(o.productId));
       if (o.items && Array.isArray(o.items)) {
         o.items.forEach((item: any) => {
+          if (item.product_id) allProductIds.add(String(item.product_id));
+        });
+      }
+      // Web orders store items in items_snapshot
+      const snapshot = (o as any).items_snapshot;
+      if (snapshot && Array.isArray(snapshot)) {
+        snapshot.forEach((item: any) => {
           if (item.product_id) allProductIds.add(String(item.product_id));
         });
       }
@@ -110,68 +111,63 @@ export async function GET(request: NextRequest) {
     // Using .lean() returns plain JavaScript objects, not Mongoose documents
     const ordersData = orders.map(order => {
       try {
-        // With .lean(), order is already a plain object
-        // Get _id from the order object
         let orderId: string | null = null;
-        
+
         if (order._id) {
-          if (typeof order._id === 'string') {
-            orderId = order._id;
-          } else if (order._id != null) {
-            orderId = String(order._id);
-          } else {
-            orderId = String(order._id);
-          }
+          orderId = typeof order._id === 'string' ? order._id : String(order._id);
         }
-        
-        if (!orderId) {
-          console.warn('Order missing _id:', Object.keys(order), order);
+
+        if (!orderId || orderId === 'undefined') {
           return null;
         }
-        
-        // Only skip if _id is the literal string "undefined" (not actual undefined/null)
-        if (orderId === 'undefined') {
-          console.warn('Order has "undefined" string as _id:', orderId);
-          return null;
-        }
-        
-        // Log encrypted_address for debugging - compare to see if all orders have same address
-        if (order.encrypted_address) {
-          const addressHash = require('crypto').createHash('sha256').update(order.encrypted_address).digest('hex').substring(0, 16);
-          console.log(`Order ${orderId}: has encrypted_address (length: ${order.encrypted_address.length}, hash: ${addressHash})`);
-        } else {
-          console.log(`Order ${orderId}: NO encrypted_address`);
-        }
-        
+
         const botId = order.botId != null ? String(order.botId) : order.botId;
-        
+        const isWebOrder = (order as any).source === 'web';
+
+        // Normalize web order fields to match Telegram order format
+        const amount = order.amount || (order as any).display_amount || 0;
+        const currency = order.currency || (order as any).crypto_currency || '';
+        const timestamp = order.timestamp || (order as any).created_at;
+        const userId = order.userId || (isWebOrder ? 'web' : undefined);
+
+        // For web orders, derive product info from items_snapshot
+        let productName = order.productId ? productNamesMap[String(order.productId)] : undefined;
+        const itemsSnapshot = (order as any).items_snapshot as Array<{ product_id: string; name: string; quantity: number; price: number; line_total: number }> | undefined;
+        if (!productName && itemsSnapshot?.length) {
+          productName = itemsSnapshot.map(i => i.name).join(', ');
+        }
+
+        // Build items array for web orders from items_snapshot if no items field
+        const items = order.items?.map((item: any) => ({
+          ...item,
+          product_name: item.product_id ? productNamesMap[String(item.product_id)] : undefined,
+        })) || itemsSnapshot?.map((item: any) => ({
+          ...item,
+          product_name: item.name,
+        }));
+
         return {
           ...order,
-          _id: orderId, // Explicitly set _id as string
+          _id: orderId,
           botId: botId,
           botName: botNamesMap[botId] || 'Unknown Bot',
-          productId: order.productId != null ? String(order.productId) : order.productId,
-          productName: order.productId ? productNamesMap[String(order.productId)] : undefined,
-          items: order.items?.map((item: any) => ({
-            ...item,
-            product_name: item.product_id ? productNamesMap[String(item.product_id)] : undefined,
-          })),
-          // Include encrypted_address if it exists (for UI to show "View Address" button)
-          // Only include if it's actually set (not empty string)
+          productId: order.productId != null ? String(order.productId) : (itemsSnapshot?.[0]?.product_id || undefined),
+          productName,
+          amount,
+          currency,
+          timestamp,
+          userId,
+          source: isWebOrder ? 'web' : 'telegram',
+          order_number: (order as any).order_number || undefined,
+          items,
           encrypted_address: order.encrypted_address && order.encrypted_address.trim() ? order.encrypted_address : undefined,
-          // Include notes from invoice if available
           notes: notesMap[orderId] || undefined,
         };
       } catch (error) {
         console.error('Error processing order:', error, order);
         return null;
       }
-    }).filter(order => order !== null); // Remove any null entries
-    
-    // Count orders with addresses for debugging
-    const ordersWithAddresses = ordersData.filter(o => o.encrypted_address).length;
-    console.log(`Returning ${ordersData.length} orders out of ${orders.length} total`);
-    console.log(`Orders with encrypted_address: ${ordersWithAddresses}`);
+    }).filter(order => order !== null);
     
     return NextResponse.json(ordersData);
   } catch (error) {
