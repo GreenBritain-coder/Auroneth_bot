@@ -152,18 +152,13 @@ export async function POST(request: NextRequest) {
       ports_exposes: '8000',
       base_directory: '/telegram-bot-service',
       dockerfile_location: '/Dockerfile',
+      domains: fqdn,
     });
 
     const appUuid = createRes.uuid;
     if (!appUuid) {
       throw new Error('No UUID returned from Coolify app creation');
     }
-
-    // Set FQDN
-    await coolify('PATCH', `/applications/${appUuid}`, {
-      fqdn,
-      name: appName,
-    });
 
     steps.push({
       step: 'Create Coolify app',
