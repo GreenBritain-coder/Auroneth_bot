@@ -284,11 +284,16 @@ async def _order_summary_line(order, products_collection):
 
     product = await get_product_info(products_collection, order.get("productId"))
     product_name = product.get("name", "Unknown") if product else "Unknown"
+    # For web orders, get product name from items_snapshot
+    if product_name == "Unknown" and order.get("items_snapshot"):
+        names = [i.get("name", "") for i in order["items_snapshot"] if i.get("name")]
+        if names:
+            product_name = ", ".join(names)
     # Truncate long product names
     if len(product_name) > 20:
         product_name = product_name[:18] + ".."
 
-    order_date = order.get("timestamp", datetime.utcnow())
+    order_date = order.get("timestamp") or order.get("created_at") or datetime.utcnow()
     if isinstance(order_date, datetime):
         delta = datetime.utcnow() - order_date
         if delta.days == 0:
