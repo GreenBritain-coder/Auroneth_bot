@@ -154,14 +154,29 @@ export async function POST(
     const rateLockExpiry = new Date(now.getTime() + 15 * 60 * 1000);
 
     // 7. Atomic stock reservation - decrement stock for each item
+    // Only applies to products with explicit stock tracking (null/undefined = unlimited)
     const stockDecrements: Array<{ productId: string; quantity: number }> = [];
     try {
       for (const item of cart.items as ICartItem[]) {
         const product = productMap.get(item.product_id);
-        const variations = (product as Record<string, unknown>)?.variations as Array<{ stock?: number }> | undefined;
+        const p = product as Record<string, unknown>;
+        const productStock = (p as any).stock as number | null | undefined;
+        const variations = p?.variations as Array<{ stock?: number }> | undefined;
+        const hasVariationStock = variations?.some((v: { stock?: number }) => v.stock !== undefined && v.stock !== null) ?? false;
 
-        if (variations && variations.length > 0) {
-          // Decrement stock in first variation with sufficient stock
+        if (productStock !== undefined && productStock !== null) {
+          // Product-level stock tracking
+          const result = await Product.findOneAndUpdate(
+            { _id: item.product_id, stock: { $gte: item.quantity } },
+            { $inc: { stock: -item.quantity } },
+            { new: true }
+          );
+          if (!result) {
+            throw new Error(`Stock reservation failed for ${item.product_id}`);
+          }
+          stockDecrements.push({ productId: item.product_id, quantity: item.quantity });
+        } else if (hasVariationStock) {
+          // Variation-level stock tracking
           const result = await Product.findOneAndUpdate(
             {
               _id: item.product_id,
@@ -170,12 +185,12 @@ export async function POST(
             { $inc: { 'variations.$.stock': -item.quantity } },
             { new: true }
           );
-
           if (!result) {
             throw new Error(`Stock reservation failed for ${item.product_id}`);
           }
           stockDecrements.push({ productId: item.product_id, quantity: item.quantity });
         }
+        // No stock field = unlimited = skip reservation
       }
     } catch (stockErr) {
       // Rollback all stock decrements
