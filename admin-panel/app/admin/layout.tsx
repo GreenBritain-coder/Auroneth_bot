@@ -40,9 +40,9 @@ export default function AdminLayout({
     { href: '/admin/users', label: 'Users' },
   ];
 
-  // Add "Manage Users" link for super-admins only
-  const adminNavItems = userRole === 'super-admin' 
-    ? [...navItems, { href: '/admin/users-manage', label: 'Manage Users' }]
+  // Add super-admin only links
+  const adminNavItems = userRole === 'super-admin'
+    ? [...navItems, { href: '/admin/deploy-vendor', label: 'Deploy' }, { href: '/admin/users-manage', label: 'Manage Users' }]
     : navItems;
 
   return (
