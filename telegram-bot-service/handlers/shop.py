@@ -279,9 +279,16 @@ async def _render_all_reviews(callback_or_message, star_filter: Optional[int], p
             rating = review.get("rating", 0)
             comment = review.get("comment", "")
             stars = "★" * rating + "☆" * (5 - rating)
-            reviews_text += f"{stars}\n"
+            created = review.get("created_at")
+            date_str = created.strftime("%d %b %Y") if created else ""
+            line = stars
+            if date_str:
+                line += f"  _{date_str}_"
+            reviews_text += line + "\n"
             if comment:
-                reviews_text += f"{comment}\n"
+                reviews_text += '"' + comment + '"' + "\n"
+            else:
+                reviews_text += '_No comment_' + "\n"
             reviews_text += "\n"
 
     keyboard_buttons = []
