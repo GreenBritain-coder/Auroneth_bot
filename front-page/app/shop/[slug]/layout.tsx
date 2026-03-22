@@ -4,6 +4,7 @@ import connectDB from '../../../lib/db';
 import { Bot, Cart } from '../../../lib/models';
 import { cookies } from 'next/headers';
 import { notFound } from 'next/navigation';
+import type { Metadata } from 'next';
 
 async function getShopData(slug: string) {
   await connectDB();
@@ -12,6 +13,40 @@ async function getShopData(slug: string) {
     web_shop_enabled: true,
   }).lean();
   return bot;
+}
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ slug: string }>;
+}): Promise<Metadata> {
+  const { slug } = await params;
+  await connectDB();
+  const bot = await Bot.findOne({
+    web_shop_slug: slug,
+    web_shop_enabled: true,
+  }).lean() as Record<string, unknown> | null;
+
+  if (!bot) {
+    return { title: 'Shop Not Found' };
+  }
+
+  const title = `${bot.name} | Auroneth Web Shop`;
+  const description =
+    (bot.web_shop_description as string) ||
+    (bot.description as string) ||
+    `Browse products at ${bot.name} on Auroneth.`;
+
+  return {
+    title,
+    description,
+    openGraph: {
+      title,
+      description,
+      type: 'website',
+      ...(bot.profile_picture_url ? { images: [{ url: bot.profile_picture_url as string }] } : {}),
+    },
+  };
 }
 
 async function getCartCount(botId: string, sessionId: string | undefined) {

@@ -55,6 +55,8 @@ interface Bot {
   sales?: number; // Paid orders count
   rating?: string | null; // Rating percentage (e.g., "96.81%")
   rating_count?: string | null; // Number of ratings (e.g., "7707")
+  web_shop_enabled?: boolean;
+  web_shop_slug?: string;
 }
 
 export default function Home() {
@@ -446,19 +448,33 @@ export default function Home() {
                     {/* Spacer to push button to bottom */}
                     <div className="flex-grow"></div>
 
-                    {/* Open Bot Button */}
-                    <a
-                      href={`https://t.me/${bot.telegram_username || bot.name.toLowerCase().replace(/\s+/g, '')}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className={`inline-flex items-center justify-center w-full px-4 py-2 rounded-md hover:opacity-90 transition-opacity font-medium mt-4 ${
-                        isFeatured 
-                          ? 'bg-white text-gray-900 hover:bg-white/90 shadow-lg' 
-                          : `${theme.badge} text-white`
-                      }`}
-                    >
-                      Open Bot
-                    </a>
+                    {/* Action Buttons */}
+                    <div className={`flex gap-2 mt-4 ${bot.web_shop_enabled && bot.web_shop_slug ? 'flex-col sm:flex-row' : ''}`}>
+                      <a
+                        href={`https://t.me/${bot.telegram_username || bot.name.toLowerCase().replace(/\s+/g, '')}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className={`inline-flex items-center justify-center flex-1 px-4 py-2 rounded-md hover:opacity-90 transition-opacity font-medium ${
+                          isFeatured
+                            ? 'bg-white text-gray-900 hover:bg-white/90 shadow-lg'
+                            : `${theme.badge} text-white`
+                        }`}
+                      >
+                        Open Bot
+                      </a>
+                      {bot.web_shop_enabled && bot.web_shop_slug && (
+                        <a
+                          href={`/shop/${bot.web_shop_slug}`}
+                          className={`inline-flex items-center justify-center flex-1 px-4 py-2 rounded-md hover:opacity-90 transition-opacity font-medium ${
+                            isFeatured
+                              ? 'bg-white/20 text-white border border-white/30 hover:bg-white/30'
+                              : 'bg-gray-700 text-white border border-gray-600 hover:bg-gray-600'
+                          }`}
+                        >
+                          Visit Web Shop
+                        </a>
+                      )}
+                    </div>
                   </div>
                 </div>
               );

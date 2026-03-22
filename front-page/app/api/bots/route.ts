@@ -13,7 +13,7 @@ export async function GET() {
     const bots = await Bot.find({
       status: 'live',
       public_listing: true,
-    }).select('name description status profile_picture_url categories featured telegram_username payment_methods cut_off_time rating rating_count').lean();
+    }).select('name description status profile_picture_url categories featured telegram_username payment_methods cut_off_time rating rating_count web_shop_enabled web_shop_slug').lean();
 
     // Get order counts per bot (any order that was paid, shipped, or completed)
     const ordersCollection = mongoose.connection.db?.collection('orders');
