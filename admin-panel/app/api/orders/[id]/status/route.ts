@@ -208,7 +208,16 @@ async function notifyBuyer(
   const db = mongoose.connection.db;
   if (!db) return;
 
-  const botConfig = await db.collection('bots').findOne({ _id: order.botId });
+  // Convert string botId to ObjectId for lookup
+  let botId = order.botId;
+  try {
+    if (typeof botId === 'string') {
+      botId = new mongoose.Types.ObjectId(botId);
+    }
+  } catch (e) {
+    // Keep as-is if not a valid ObjectId string
+  }
+  const botConfig = await db.collection('bots').findOne({ _id: botId });
   if (!botConfig || !botConfig.token) return;
 
   const orderId = String(order._id);
