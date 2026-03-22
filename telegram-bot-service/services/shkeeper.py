@@ -263,14 +263,31 @@ def create_invoice(amount: float, currency: str, order_id: str, buyer_email: str
                     "error": f"Invalid amount: {amount} (negative value)"
                 }
         
+        # SHKeeper only supports USD and EUR as fiat currencies.
+        # Convert other currencies (e.g., GBP) to USD before sending.
+        shkeeper_fiat = fiat_currency
+        shkeeper_amount = amount
+        if fiat_currency.upper() not in ("USD", "EUR"):
+            try:
+                from utils.currency_converter import convert_amount
+                usd_amount = convert_amount(amount, fiat_currency, "USD")
+                if usd_amount and usd_amount > 0:
+                    print(f"[SHKeeper create_invoice] Converting {amount} {fiat_currency} -> {usd_amount} USD for SHKeeper")
+                    shkeeper_amount = usd_amount
+                    shkeeper_fiat = "USD"
+                else:
+                    print(f"[SHKeeper create_invoice] WARNING: Could not convert {fiat_currency} to USD, sending as-is")
+            except Exception as conv_err:
+                print(f"[SHKeeper create_invoice] WARNING: Currency conversion failed: {conv_err}, sending as-is")
+
         payload = {
             "external_id": str(order_id),
-            "fiat": fiat_currency,
-            "amount": str(amount),  # SHKeeper expects string
+            "fiat": shkeeper_fiat,
+            "amount": str(shkeeper_amount),  # SHKeeper expects string
             "callback_url": callback_url
         }
         
-        print(f"[SHKeeper create_invoice] Payload: external_id={payload['external_id']}, fiat={payload['fiat']}, amount={payload['amount']}")
+        print(f"[SHKeeper create_invoice] Payload: external_id={payload['external_id']}, fiat={payload['fiat']}, amount={payload['amount']} (original: {amount} {fiat_currency})")
         print(f"[SHKeeper create_invoice] API URL: {API_URL}/api/v1/{crypto_name}/payment_request")
         
         try:
