@@ -23,6 +23,7 @@ interface OrderDetail {
   currency?: string;
   timestamp: string;
   encrypted_address?: string;
+  source?: string;
   items?: Array<{ product_id: string; product_name?: string; quantity: number; price: number }>;
   delivery_method?: string;
   shipping_cost?: number;
@@ -101,6 +102,11 @@ export default function OrderDetailPage() {
   const [error, setError] = useState('');
   const [actionLoading, setActionLoading] = useState(false);
 
+  // Address decryption state
+  const [decryptedAddress, setDecryptedAddress] = useState<string | null>(null);
+  const [addressLoading, setAddressLoading] = useState(false);
+  const [addressError, setAddressError] = useState<string | null>(null);
+
   // Modal state for actions requiring input
   const [showModal, setShowModal] = useState(false);
   const [modalAction, setModalAction] = useState<{ status: string; label: string; requiresInput?: string } | null>(null);
@@ -131,6 +137,28 @@ export default function OrderDetailPage() {
       setError('Network error');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleDecryptAddress = async () => {
+    setAddressLoading(true);
+    setAddressError(null);
+    try {
+      const response = await fetch(`/api/orders/${orderId}/decrypt-address`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      const data = await response.json();
+      if (response.ok && data.success) {
+        setDecryptedAddress(data.address);
+      } else {
+        setAddressError(data.error || 'Failed to decrypt address');
+      }
+    } catch (err) {
+      setAddressError('Network error');
+    } finally {
+      setAddressLoading(false);
     }
   };
 
@@ -283,7 +311,7 @@ export default function OrderDetailPage() {
             {order.delivery_method && (
               <div>
                 <dt className="text-sm text-gray-500">Delivery Method</dt>
-                <dd className="text-sm">{order.delivery_method} {order.shipping_cost ? `(+${order.shipping_cost})` : ''}</dd>
+                <dd className="text-sm">{order.delivery_method} {order.shipping_cost ? `(+£${order.shipping_cost.toFixed(2)})` : ''}</dd>
               </div>
             )}
             {order.tracking_info && (
@@ -313,25 +341,61 @@ export default function OrderDetailPage() {
           </dl>
         </div>
 
-        {/* Actions */}
-        <div className="bg-white shadow rounded-lg p-6">
-          <h2 className="text-lg font-semibold mb-4">Actions</h2>
-          {actions.length > 0 ? (
-            <div className="space-y-3">
-              {actions.map((action) => (
-                <button
-                  key={action.status}
-                  onClick={() => handleAction(action.status, action.requiresInput)}
-                  disabled={actionLoading}
-                  className={`w-full px-4 py-2 rounded-md text-white font-medium ${action.color} disabled:opacity-50 disabled:cursor-not-allowed`}
-                >
-                  {actionLoading ? 'Processing...' : action.label}
-                </button>
-              ))}
+        {/* Actions + Shipping Address */}
+        <div className="space-y-6">
+          {/* Shipping Address */}
+          {order.encrypted_address && (
+            <div className="bg-white shadow rounded-lg p-6">
+              <h2 className="text-lg font-semibold mb-4">Shipping Address</h2>
+              {decryptedAddress ? (
+                <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                  <pre className="text-sm text-gray-900 whitespace-pre-wrap font-sans">{decryptedAddress}</pre>
+                  <button
+                    onClick={() => setDecryptedAddress(null)}
+                    className="mt-3 text-xs text-gray-500 hover:text-gray-700"
+                  >
+                    Hide address
+                  </button>
+                </div>
+              ) : (
+                <div>
+                  {addressError && (
+                    <div className="bg-red-50 border border-red-200 text-red-600 text-sm px-3 py-2 rounded mb-3">
+                      {addressError}
+                    </div>
+                  )}
+                  <button
+                    onClick={handleDecryptAddress}
+                    disabled={addressLoading}
+                    className="w-full px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-md disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {addressLoading ? 'Decrypting...' : 'View Shipping Address'}
+                  </button>
+                </div>
+              )}
             </div>
-          ) : (
-            <p className="text-sm text-gray-500">No actions available for this status.</p>
           )}
+
+          {/* Actions */}
+          <div className="bg-white shadow rounded-lg p-6">
+            <h2 className="text-lg font-semibold mb-4">Actions</h2>
+            {actions.length > 0 ? (
+              <div className="space-y-3">
+                {actions.map((action) => (
+                  <button
+                    key={action.status}
+                    onClick={() => handleAction(action.status, action.requiresInput)}
+                    disabled={actionLoading}
+                    className={`w-full px-4 py-2 rounded-md text-white font-medium ${action.color} disabled:opacity-50 disabled:cursor-not-allowed`}
+                  >
+                    {actionLoading ? 'Processing...' : action.label}
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-gray-500">No actions available for this status.</p>
+            )}
+          </div>
         </div>
       </div>
 
