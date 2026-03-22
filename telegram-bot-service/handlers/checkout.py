@@ -1308,9 +1308,11 @@ async def show_payment_invoice(invoice_id: str, callback: CallbackQuery | Messag
             traceback.print_exc()
 
     # Format amount based on currency
-    if payment_currency.upper() == 'BTC':
-        formatted_amount = f"{payment_amount:.8f}".rstrip('0').rstrip('.')
-    elif payment_currency.upper() in ['ETH', 'LTC', 'BCH']:
+    # Check both display name (e.g. "Litecoin") and code (e.g. "LTC")
+    _cur = payment_currency.upper()
+    _code = (payment_currency_code or "").upper()
+    _crypto_names = {'BTC', 'BITCOIN', 'ETH', 'ETHEREUM', 'LTC', 'LITECOIN', 'BCH', 'BITCOIN CASH', 'DOGE', 'DOGECOIN', 'XMR', 'MONERO', 'XRP', 'RIPPLE', 'AVAX', 'AVALANCHE', 'BNB'}
+    if _cur in _crypto_names or _code in _crypto_names:
         formatted_amount = f"{payment_amount:.8f}".rstrip('0').rstrip('.')
     else:
         formatted_amount = f"{payment_amount:.2f}"
@@ -1824,9 +1826,10 @@ async def handle_show_qr(callback: CallbackQuery):
                 print(f"[QR Handler] Error extracting amount from URI: {e}")
 
     # Format amount based on currency for display
-    if payment_currency.upper() == 'BTC':
-        formatted_amount = f"{payment_amount:.8f}".rstrip('0').rstrip('.')
-    elif payment_currency.upper() in ['ETH', 'LTC', 'BCH']:
+    # Check both display name (e.g. "Litecoin") and code (e.g. "LTC")
+    currency_check = (payment_currency.upper(), (payment_currency_code or "").upper())
+    crypto_names = {'BTC', 'BITCOIN', 'ETH', 'ETHEREUM', 'LTC', 'LITECOIN', 'BCH', 'BITCOIN CASH', 'DOGE', 'DOGECOIN', 'XMR', 'MONERO', 'XRP', 'RIPPLE', 'AVAX', 'AVALANCHE', 'BNB'}
+    if any(c in crypto_names for c in currency_check):
         formatted_amount = f"{payment_amount:.8f}".rstrip('0').rstrip('.')
     else:
         formatted_amount = f"{payment_amount:.2f}"
