@@ -185,7 +185,7 @@ export default function CheckoutPage() {
       } catch {
         // Ignore poll errors
       }
-    }, 10000);
+    }, 5000);
 
     pollRef.current = poll;
     return () => clearInterval(poll);
