@@ -44,7 +44,11 @@ export default function EditBotPage() {
     payout_ltc_address: '', // Vendor's LTC payout address
     payout_btc_address: '', // Vendor's BTC payout address
     payout_usdt_address: '', // Vendor's USDT (TRC20) payout address
-    shipping_methods: { STD: 0, EXP: 5, NXT: 10 } as Record<string, number>, // Delivery method costs (Standard, Express, Next Day)
+    shipping_methods: {
+      FREE: { enabled: true, cost: 0 },
+      EXP: { enabled: true, cost: 5 },
+      NXT: { enabled: true, cost: 10 },
+    } as Record<string, { enabled: boolean; cost: number }>, // Delivery methods with enable/disable
     custom_buttons: [] as Array<{
       label: string;
       message: string;
@@ -249,14 +253,22 @@ export default function EditBotPage() {
           payout_usdt_address: botData.payout_usdt_address || '',
           shipping_methods: (() => {
             const methods = botData.shipping_methods;
+            const defaults: Record<string, { enabled: boolean; cost: number }> = {
+              FREE: { enabled: true, cost: 0 },
+              EXP: { enabled: false, cost: 5 },
+              NXT: { enabled: false, cost: 10 },
+            };
             if (methods && Array.isArray(methods) && methods.length > 0) {
-              const out: Record<string, number> = {};
+              // Reset all to disabled first
+              Object.keys(defaults).forEach(k => defaults[k].enabled = false);
               methods.forEach((m: { code: string; name: string; cost: number }) => {
-                out[m.code] = typeof m.cost === 'number' ? m.cost : 0;
+                const code = m.code === 'STD' ? 'FREE' : m.code;
+                if (defaults[code]) {
+                  defaults[code] = { enabled: true, cost: typeof m.cost === 'number' ? m.cost : 0 };
+                }
               });
-              return { STD: 0, EXP: 5, NXT: 10, ...out };
             }
-            return { STD: 0, EXP: 5, NXT: 10 };
+            return defaults;
           })(),
           menu_inline_buttons: (() => {
             // If menu_inline_buttons exist, use them; otherwise auto-generate from main_buttons
@@ -503,11 +515,20 @@ export default function EditBotPage() {
         payout_ltc_address: formData.payout_ltc_address || '',
         payout_btc_address: formData.payout_btc_address || '',
         payout_usdt_address: formData.payout_usdt_address || '',
-        shipping_methods: [
-          { code: 'STD', name: 'Standard Delivery', cost: Number(formData.shipping_methods.STD) || 0 },
-          { code: 'EXP', name: 'Express Delivery', cost: Number(formData.shipping_methods.EXP) || 0 },
-          { code: 'NXT', name: 'Next Day Delivery', cost: Number(formData.shipping_methods.NXT) || 0 },
-        ],
+        shipping_methods: (() => {
+          const methodMap: Record<string, string> = {
+            FREE: 'Free Delivery',
+            EXP: 'Express Delivery',
+            NXT: 'Next Day Delivery',
+          };
+          const enabled = Object.entries(formData.shipping_methods)
+            .filter(([, v]) => v.enabled)
+            .map(([code, v]) => ({ code, name: methodMap[code] || code, cost: code === 'FREE' ? 0 : Number(v.cost) || 0 }));
+          if (enabled.length === 0) {
+            throw new Error('At least one delivery method must be enabled');
+          }
+          return enabled;
+        })(),
         web_shop_enabled: formData.web_shop_enabled,
         web_shop_slug: formData.web_shop_slug || formData.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''),
         web_shop_description: formData.web_shop_description || '',
@@ -1177,44 +1198,90 @@ export default function EditBotPage() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700">Delivery Method Costs</label>
-                <p className="mt-1 text-sm text-gray-500 mb-2">Set the cost for each delivery method (in order currency, e.g. GBP)</p>
-                <div className="space-y-2">
-                  <div className="flex items-center gap-4">
-                    <label className="text-sm text-gray-600 w-40">Standard Delivery</label>
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      className="block w-24 border border-gray-300 rounded-md px-3 py-2"
-                      placeholder="0"
-                      value={formData.shipping_methods.STD ?? 0}
-                      onChange={(e) => setFormData({ ...formData, shipping_methods: { ...formData.shipping_methods, STD: parseFloat(e.target.value) || 0 } })}
-                    />
+                <label className="block text-sm font-medium text-gray-700">Delivery Methods</label>
+                <p className="mt-1 text-sm text-gray-500 mb-3">Enable delivery options and set costs. At least one method must be enabled.</p>
+                <div className="space-y-3">
+                  {/* Free Delivery */}
+                  <div className="flex items-center justify-between p-3 rounded-lg border border-gray-200 bg-gray-50">
+                    <div className="flex items-center gap-3">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const otherEnabled = formData.shipping_methods.EXP?.enabled || formData.shipping_methods.NXT?.enabled;
+                          if (formData.shipping_methods.FREE?.enabled && !otherEnabled) return;
+                          setFormData({ ...formData, shipping_methods: { ...formData.shipping_methods, FREE: { ...formData.shipping_methods.FREE, enabled: !formData.shipping_methods.FREE?.enabled } } });
+                        }}
+                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${formData.shipping_methods.FREE?.enabled ? 'bg-indigo-600' : 'bg-gray-300'}`}
+                      >
+                        <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${formData.shipping_methods.FREE?.enabled ? 'translate-x-6' : 'translate-x-1'}`} />
+                      </button>
+                      <span className="text-sm font-medium text-gray-700">Free Delivery</span>
+                    </div>
+                    <span className="text-sm text-green-600 font-medium">£0.00</span>
                   </div>
-                  <div className="flex items-center gap-4">
-                    <label className="text-sm text-gray-600 w-40">Express Delivery</label>
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      className="block w-24 border border-gray-300 rounded-md px-3 py-2"
-                      placeholder="5"
-                      value={formData.shipping_methods.EXP ?? 5}
-                      onChange={(e) => setFormData({ ...formData, shipping_methods: { ...formData.shipping_methods, EXP: parseFloat(e.target.value) || 0 } })}
-                    />
+
+                  {/* Express Delivery */}
+                  <div className={`flex items-center justify-between p-3 rounded-lg border ${formData.shipping_methods.EXP?.enabled ? 'border-gray-200 bg-gray-50' : 'border-gray-100 bg-gray-50/50 opacity-60'}`}>
+                    <div className="flex items-center gap-3">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const willDisable = formData.shipping_methods.EXP?.enabled;
+                          const otherEnabled = formData.shipping_methods.FREE?.enabled || formData.shipping_methods.NXT?.enabled;
+                          if (willDisable && !otherEnabled) return;
+                          setFormData({ ...formData, shipping_methods: { ...formData.shipping_methods, EXP: { ...formData.shipping_methods.EXP, enabled: !formData.shipping_methods.EXP?.enabled } } });
+                        }}
+                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${formData.shipping_methods.EXP?.enabled ? 'bg-indigo-600' : 'bg-gray-300'}`}
+                      >
+                        <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${formData.shipping_methods.EXP?.enabled ? 'translate-x-6' : 'translate-x-1'}`} />
+                      </button>
+                      <span className="text-sm font-medium text-gray-700">Express Delivery</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <span className="text-sm text-gray-500">£</span>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        className="block w-20 border border-gray-300 rounded-md px-2 py-1 text-sm text-right"
+                        placeholder="5.00"
+                        disabled={!formData.shipping_methods.EXP?.enabled}
+                        value={formData.shipping_methods.EXP?.cost ?? 5}
+                        onChange={(e) => setFormData({ ...formData, shipping_methods: { ...formData.shipping_methods, EXP: { ...formData.shipping_methods.EXP, cost: parseFloat(e.target.value) || 0 } } })}
+                      />
+                    </div>
                   </div>
-                  <div className="flex items-center gap-4">
-                    <label className="text-sm text-gray-600 w-40">Next Day Delivery</label>
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      className="block w-24 border border-gray-300 rounded-md px-3 py-2"
-                      placeholder="10"
-                      value={formData.shipping_methods.NXT ?? 10}
-                      onChange={(e) => setFormData({ ...formData, shipping_methods: { ...formData.shipping_methods, NXT: parseFloat(e.target.value) || 0 } })}
-                    />
+
+                  {/* Next Day Delivery */}
+                  <div className={`flex items-center justify-between p-3 rounded-lg border ${formData.shipping_methods.NXT?.enabled ? 'border-gray-200 bg-gray-50' : 'border-gray-100 bg-gray-50/50 opacity-60'}`}>
+                    <div className="flex items-center gap-3">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const willDisable = formData.shipping_methods.NXT?.enabled;
+                          const otherEnabled = formData.shipping_methods.FREE?.enabled || formData.shipping_methods.EXP?.enabled;
+                          if (willDisable && !otherEnabled) return;
+                          setFormData({ ...formData, shipping_methods: { ...formData.shipping_methods, NXT: { ...formData.shipping_methods.NXT, enabled: !formData.shipping_methods.NXT?.enabled } } });
+                        }}
+                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${formData.shipping_methods.NXT?.enabled ? 'bg-indigo-600' : 'bg-gray-300'}`}
+                      >
+                        <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${formData.shipping_methods.NXT?.enabled ? 'translate-x-6' : 'translate-x-1'}`} />
+                      </button>
+                      <span className="text-sm font-medium text-gray-700">Next Day Delivery</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <span className="text-sm text-gray-500">£</span>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        className="block w-20 border border-gray-300 rounded-md px-2 py-1 text-sm text-right"
+                        placeholder="10.00"
+                        disabled={!formData.shipping_methods.NXT?.enabled}
+                        value={formData.shipping_methods.NXT?.cost ?? 10}
+                        onChange={(e) => setFormData({ ...formData, shipping_methods: { ...formData.shipping_methods, NXT: { ...formData.shipping_methods.NXT, cost: parseFloat(e.target.value) || 0 } } })}
+                      />
+                    </div>
                   </div>
                 </div>
               </div>
