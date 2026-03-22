@@ -471,14 +471,14 @@ export interface IAdmin extends Document {
   _id: string;
   username: string;
   password_hash: string;
-  role: 'super-admin' | 'bot-owner';
+  role: 'super-admin' | 'bot-owner' | 'demo';
   created_at: Date;
 }
 
 const AdminSchema = new Schema<IAdmin>({
   username: { type: String, required: true, unique: true },
   password_hash: { type: String, required: true },
-  role: { type: String, enum: ['super-admin', 'bot-owner'], default: 'bot-owner' },
+  role: { type: String, enum: ['super-admin', 'bot-owner', 'demo'], default: 'bot-owner' },
   created_at: { type: Date, default: Date.now },
 });
 

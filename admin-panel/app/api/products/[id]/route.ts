@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '../../../../lib/db';
 import { Product } from '../../../../lib/models';
 import { getTokenFromRequest, verifyToken } from '../../../../lib/auth';
+import { demoWriteBlocked } from '../../../../lib/demo-guard';
 
 export async function GET(
   request: NextRequest,
@@ -64,8 +65,11 @@ export async function PATCH(
       return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
     }
 
+    const demoBlocked = demoWriteBlocked(payload);
+    if (demoBlocked) return demoBlocked;
+
     await connectDB();
-    
+
     // Check ownership first
     const existingProduct = await Product.findById(params.id);
     if (!existingProduct) {
@@ -122,8 +126,11 @@ export async function DELETE(
       return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
     }
 
+    const demoBlocked = demoWriteBlocked(payload);
+    if (demoBlocked) return demoBlocked;
+
     await connectDB();
-    
+
     // Check ownership first
     const product = await Product.findById(params.id);
     if (!product) {

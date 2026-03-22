@@ -23,7 +23,7 @@ if (JWT_SECRET.length < 32) {
 export interface TokenPayload {
   username: string;
   userId: string;
-  role?: 'super-admin' | 'bot-owner';
+  role?: 'super-admin' | 'bot-owner' | 'demo';
 }
 
 // Get secret key for jose

@@ -34,7 +34,7 @@ export async function middleware(request: NextRequest) {
     }
 
     // Check if user is trying to access super-admin only routes
-    const superAdminRoutes = ['/admin/users-manage', '/admin/deploy-vendor'];
+    const superAdminRoutes = ['/admin/users-manage', '/admin/deploy-vendor', '/admin/bots/new'];
     if (superAdminRoutes.includes(pathname) && payload.role !== 'super-admin') {
       console.log('Middleware: Non-super-admin trying to access restricted route, redirecting');
       return NextResponse.redirect(new URL('/admin/bots', request.url));

@@ -92,13 +92,13 @@ async def _build_conversation_view(db, bot_id: str, telegram_user_id: str) -> st
     user_msgs = await contact_messages_collection.find({
         "botId": bot_id,
         "userId": telegram_user_id
-    }).sort("timestamp", -1).limit(10).to_list(length=10)
+    }).sort("timestamp", -1).limit(4).to_list(length=4)
 
     # Fetch vendor responses
     vendor_msgs = await contact_responses_collection.find({
         "botId": bot_id,
         "userId": telegram_user_id
-    }).sort("timestamp", -1).limit(10).to_list(length=10)
+    }).sort("timestamp", -1).limit(4).to_list(length=4)
 
     # Tag each message with its sender
     merged = []
@@ -129,7 +129,7 @@ async def _build_conversation_view(db, bot_id: str, telegram_user_id: str) -> st
         return ts if isinstance(ts, datetime) else datetime.min
 
     merged.sort(key=_ts)
-    merged = merged[-10:]
+    merged = merged[-4:]
 
     if not merged:
         return ""

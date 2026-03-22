@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '../../../../lib/db';
 import { Subcategory } from '../../../../lib/models';
 import { getTokenFromRequest, verifyToken } from '../../../../lib/auth';
+import { demoWriteBlocked } from '../../../../lib/demo-guard';
 
 export async function GET(
   request: NextRequest,
@@ -64,8 +65,11 @@ export async function PATCH(
       return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
     }
 
+    const demoBlocked = demoWriteBlocked(payload);
+    if (demoBlocked) return demoBlocked;
+
     await connectDB();
-    
+
     const existingSubcategory = await Subcategory.findById(params.id);
     if (!existingSubcategory) {
       return NextResponse.json({ error: 'Subcategory not found' }, { status: 404 });
@@ -120,8 +124,11 @@ export async function DELETE(
       return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
     }
 
+    const demoBlocked = demoWriteBlocked(payload);
+    if (demoBlocked) return demoBlocked;
+
     await connectDB();
-    
+
     const subcategory = await Subcategory.findById(params.id);
     if (!subcategory) {
       return NextResponse.json({ error: 'Subcategory not found' }, { status: 404 });

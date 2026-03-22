@@ -3,6 +3,7 @@ import mongoose from 'mongoose';
 import connectDB from '../../../../lib/db';
 import { Bot } from '../../../../lib/models';
 import { getTokenFromRequest, verifyToken } from '../../../../lib/auth';
+import { demoWriteBlocked } from '../../../../lib/demo-guard';
 
 export async function GET(
   request: NextRequest,
@@ -77,8 +78,11 @@ export async function PATCH(
       return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
     }
 
+    const demoBlocked = demoWriteBlocked(payload);
+    if (demoBlocked) return demoBlocked;
+
     await connectDB();
-    
+
     // Check ownership first
     const existingBot = await Bot.findById(params.id);
     if (!existingBot) {
@@ -226,8 +230,11 @@ export async function DELETE(
       return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
     }
 
+    const demoBlocked = demoWriteBlocked(payload);
+    if (demoBlocked) return demoBlocked;
+
     await connectDB();
-    
+
     // Check ownership first
     const bot = await Bot.findById(params.id);
     if (!bot) {

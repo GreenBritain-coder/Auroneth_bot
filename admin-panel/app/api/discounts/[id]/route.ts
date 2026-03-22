@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '../../../../lib/db';
 import { Discount } from '../../../../lib/models';
 import { getTokenFromRequest, verifyToken } from '../../../../lib/auth';
+import { demoWriteBlocked } from '../../../../lib/demo-guard';
 
 export async function GET(
   request: NextRequest,
@@ -64,9 +65,12 @@ export async function PUT(
       return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
     }
 
+    const demoBlocked = demoWriteBlocked(payload);
+    if (demoBlocked) return demoBlocked;
+
     await connectDB();
     const discount = await Discount.findById(params.id);
-    
+
     if (!discount) {
       return NextResponse.json({ error: 'Discount not found' }, { status: 404 });
     }
@@ -76,10 +80,10 @@ export async function PUT(
       const { Bot } = await import('../../../../lib/models');
       const userBots = await Bot.find({ owner: payload.userId });
       const userBotIds = userBots.map(b => b._id.toString());
-      
-      const hasAccess = discount.bot_ids.length === 0 || 
+
+      const hasAccess = discount.bot_ids.length === 0 ||
         discount.bot_ids.some((id: string) => userBotIds.includes(id));
-      
+
       if (!hasAccess) {
         return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
       }
@@ -147,9 +151,12 @@ export async function DELETE(
       return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
     }
 
+    const demoBlocked = demoWriteBlocked(payload);
+    if (demoBlocked) return demoBlocked;
+
     await connectDB();
     const discount = await Discount.findById(params.id);
-    
+
     if (!discount) {
       return NextResponse.json({ error: 'Discount not found' }, { status: 404 });
     }
@@ -159,10 +166,10 @@ export async function DELETE(
       const { Bot } = await import('../../../../lib/models');
       const userBots = await Bot.find({ owner: payload.userId });
       const userBotIds = userBots.map(b => b._id.toString());
-      
-      const hasAccess = discount.bot_ids.length === 0 || 
+
+      const hasAccess = discount.bot_ids.length === 0 ||
         discount.bot_ids.some((id: string) => userBotIds.includes(id));
-      
+
       if (!hasAccess) {
         return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
       }

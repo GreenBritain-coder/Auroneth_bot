@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getTokenFromRequest, verifyToken } from '@/lib/auth';
+import { demoWriteBlocked } from '@/lib/demo-guard';
 import mongoose from 'mongoose';
 
 const COOLIFY_API = process.env.COOLIFY_API_URL || 'http://coolify:8080/api/v1';
@@ -55,6 +56,9 @@ export async function POST(request: NextRequest) {
   if (!payload || payload.role !== 'super-admin') {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
+
+  const demoBlocked = demoWriteBlocked(payload);
+  if (demoBlocked) return demoBlocked;
 
   const { botToken, vendorName } = await request.json();
   if (!botToken || !vendorName) {

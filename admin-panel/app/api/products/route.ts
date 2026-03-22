@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '../../../lib/db';
 import { Product } from '../../../lib/models';
 import { getTokenFromRequest, verifyToken } from '../../../lib/auth';
+import { demoWriteBlocked } from '../../../lib/demo-guard';
 
 export async function GET(request: NextRequest) {
   try {
@@ -54,6 +55,9 @@ export async function POST(request: NextRequest) {
     if (!payload) {
       return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
     }
+
+    const demoBlocked = demoWriteBlocked(payload);
+    if (demoBlocked) return demoBlocked;
 
     await connectDB();
     const data = await request.json();

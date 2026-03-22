@@ -3,6 +3,7 @@ import connectDB from '../../../../lib/db';
 import { Admin } from '../../../../lib/models';
 import bcrypt from 'bcryptjs';
 import { getTokenFromRequest, verifyToken } from '../../../../lib/auth';
+import { demoWriteBlocked } from '../../../../lib/demo-guard';
 
 // GET - Get specific admin user (super-admin only)
 export async function GET(
@@ -63,6 +64,9 @@ export async function PATCH(
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
+    const demoBlocked = demoWriteBlocked(payload);
+    if (demoBlocked) return demoBlocked;
+
     await connectDB();
     const data = await request.json();
 
@@ -88,9 +92,9 @@ export async function PATCH(
     }
 
     if (data.role) {
-      if (data.role !== 'super-admin' && data.role !== 'bot-owner') {
+      if (data.role !== 'super-admin' && data.role !== 'bot-owner' && data.role !== 'demo') {
         return NextResponse.json(
-          { error: 'Invalid role. Must be "super-admin" or "bot-owner"' },
+          { error: 'Invalid role. Must be "super-admin", "bot-owner", or "demo"' },
           { status: 400 }
         );
       }
@@ -137,6 +141,9 @@ export async function DELETE(
     if (payload.role !== 'super-admin') {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
+
+    const demoBlocked = demoWriteBlocked(payload);
+    if (demoBlocked) return demoBlocked;
 
     // Prevent deleting yourself
     if (payload.userId === params.id) {

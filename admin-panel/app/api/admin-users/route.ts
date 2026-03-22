@@ -3,6 +3,7 @@ import connectDB from '../../../lib/db';
 import { Admin } from '../../../lib/models';
 import bcrypt from 'bcryptjs';
 import { getTokenFromRequest, verifyToken } from '../../../lib/auth';
+import { demoWriteBlocked } from '../../../lib/demo-guard';
 
 // GET - List all admin users (super-admin only)
 export async function GET(request: NextRequest) {
@@ -53,6 +54,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
+    const demoBlocked = demoWriteBlocked(payload);
+    if (demoBlocked) return demoBlocked;
+
     await connectDB();
     const data = await request.json();
 
@@ -65,9 +69,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (role && role !== 'super-admin' && role !== 'bot-owner') {
+    if (role && role !== 'super-admin' && role !== 'bot-owner' && role !== 'demo') {
       return NextResponse.json(
-        { error: 'Invalid role. Must be "super-admin" or "bot-owner"' },
+        { error: 'Invalid role. Must be "super-admin", "bot-owner", or "demo"' },
         { status: 400 }
       );
     }

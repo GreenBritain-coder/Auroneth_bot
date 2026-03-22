@@ -85,7 +85,7 @@ APP_NAME="telegram-bot-service-vendor${VENDOR_NUM}"
 DOMAIN="bot${VENDOR_NUM}.auroneth.info"
 FQDN="https://${DOMAIN}"
 
-echo "  Found ${EXISTING_COUNT} existing vendors"
+echo "  Next vendor: #${VENDOR_NUM}"
 echo "  Next vendor: #${VENDOR_NUM}"
 echo "  App name: ${APP_NAME}"
 echo "  Domain: ${DOMAIN}"

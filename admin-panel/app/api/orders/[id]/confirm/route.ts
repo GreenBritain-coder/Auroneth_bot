@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '../../../../../lib/db';
 import { Order, Bot } from '../../../../../lib/models';
 import { getTokenFromRequest, verifyToken } from '../../../../../lib/auth';
+import { demoWriteBlocked } from '../../../../../lib/demo-guard';
 import mongoose from 'mongoose';
 
 /**
@@ -22,6 +23,9 @@ export async function POST(
     if (!payload) {
       return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
     }
+
+    const demoBlocked = demoWriteBlocked(payload);
+    if (demoBlocked) return demoBlocked;
 
     const orderId = params.id;
     if (!orderId || orderId === 'undefined' || orderId === 'null' || orderId.trim() === '') {
