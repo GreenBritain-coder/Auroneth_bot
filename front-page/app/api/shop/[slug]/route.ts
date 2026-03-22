@@ -30,7 +30,7 @@ export async function GET(
       Category.countDocuments({ bot_ids: botId }),
     ]);
 
-    return NextResponse.json({
+    const res = NextResponse.json({
       shop: {
         name: bot.name,
         slug: bot.web_shop_slug,
@@ -40,6 +40,8 @@ export async function GET(
         products_count: productsCount,
       },
     });
+    res.headers.set('Cache-Control', 'public, s-maxage=30, stale-while-revalidate=60');
+    return res;
   } catch (error) {
     console.error('Error fetching shop config:', error);
     return NextResponse.json(

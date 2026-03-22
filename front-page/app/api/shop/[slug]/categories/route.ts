@@ -45,7 +45,9 @@ export async function GET(
       subcategories: subsByCategory.get(String(cat._id)) || [],
     }));
 
-    return NextResponse.json({ categories: tree });
+    const res = NextResponse.json({ categories: tree });
+    res.headers.set('Cache-Control', 'public, s-maxage=30, stale-while-revalidate=60');
+    return res;
   } catch (error) {
     console.error('Error fetching categories:', error);
     return NextResponse.json(

@@ -59,7 +59,7 @@ export default function ShopPage() {
 
   const fetchShop = async () => {
     try {
-      const res = await fetch(`/api/shop/${slug}?t=${Date.now()}`);
+      const res = await fetch(`/api/shop/${slug}`);
       if (res.ok) {
         const data = await res.json();
         setShop(data.shop);
@@ -71,7 +71,7 @@ export default function ShopPage() {
 
   const fetchCategories = async () => {
     try {
-      const res = await fetch(`/api/shop/${slug}/categories?t=${Date.now()}`);
+      const res = await fetch(`/api/shop/${slug}/categories`);
       if (res.ok) {
         const data = await res.json();
         setCategories(data.categories);
@@ -93,7 +93,6 @@ export default function ShopPage() {
       if (selectedSubcategory) searchParams.set('subcategory', selectedSubcategory);
       else if (selectedCategory) searchParams.set('category', selectedCategory);
       if (cursor) searchParams.set('cursor', cursor);
-      searchParams.set('t', String(Date.now()));
 
       const res = await fetch(`/api/shop/${slug}/products?${searchParams}`);
       if (res.ok) {

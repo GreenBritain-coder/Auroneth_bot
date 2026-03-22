@@ -61,10 +61,12 @@ export async function GET(
       variations: p.variations || [],
     }));
 
-    return NextResponse.json({
+    const res = NextResponse.json({
       products: normalized,
       next_cursor: hasMore ? String(page[page.length - 1]._id) : null,
     });
+    res.headers.set('Cache-Control', 'public, s-maxage=30, stale-while-revalidate=60');
+    return res;
   } catch (error) {
     console.error('Error fetching products:', error);
     return NextResponse.json(
