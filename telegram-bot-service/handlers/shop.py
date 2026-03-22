@@ -542,27 +542,22 @@ async def handle_rate_order(callback: CallbackQuery):
 
 
 @router.callback_query(F.data.startswith("rate_order_confirm:"))
-async def handle_rate_order_confirm(callback: CallbackQuery):
-    """User selected a star rating - show optional comment or skip"""
+async def handle_rate_order_confirm(callback: CallbackQuery, state: FSMContext):
+    """User selected a star rating - go straight to comment input"""
     await safe_answer_callback(callback)
 
     parts = callback.data.split(":")
     order_id = parts[1]
     rating = int(parts[2])
 
-    text = f"⭐ *Rating: {rating}/5*\n\nAdd a comment? (optional)"
-    keyboard_buttons = [
-        [InlineKeyboardButton(text="Skip", callback_data=f"rate_order_skip:{order_id}:{rating}")],
-        [InlineKeyboardButton(text="Add comment", callback_data=f"rate_order_comment:{order_id}:{rating}")],
-        [InlineKeyboardButton(text="⬅️ Cancel", callback_data=f"back_pay:{order_id}")],
-    ]
-    keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
+    await state.update_data(rate_order_id=order_id, rate_rating=rating)
+    await state.set_state(ReviewCommentStates.waiting_for_comment)
 
+    text = f"⭐ *Rating: {rating}/5*\n\n📝 Type your review:"
     try:
-        await callback.message.edit_text(text, parse_mode="Markdown", reply_markup=keyboard)
+        await callback.message.edit_text(text, parse_mode="Markdown")
     except Exception:
-        await callback.message.answer(text, parse_mode="Markdown", reply_markup=keyboard)
-
+        await callback.message.answer(text, parse_mode="Markdown")
 
 @router.callback_query(F.data.startswith("rate_order_skip:"))
 async def handle_rate_order_skip(callback: CallbackQuery):

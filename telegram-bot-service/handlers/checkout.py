@@ -2299,8 +2299,11 @@ async def handle_address_input(message: Message, state: FSMContext):
 
     # Check if user is in contact mode - if so, let contact handler process it
     from handlers.contact import ContactStates
+    from handlers.shop import ReviewCommentStates
     current_state = await state.get_state()
     if current_state == ContactStates.waiting_for_message:
+        return
+    if current_state == ReviewCommentStates.waiting_for_comment:
         return
 
     # Check if this is a menu button - if so, let menu handler process it
