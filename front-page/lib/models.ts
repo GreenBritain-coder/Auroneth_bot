@@ -188,6 +188,7 @@ export interface IOrder extends Document {
 }
 
 const OrderSchema = new Schema<IOrder>({
+  _id: { type: String },
   botId: { type: String, required: true },
   source: { type: String, enum: ['telegram', 'web'], default: 'telegram' },
   status: { type: String, default: 'pending' },

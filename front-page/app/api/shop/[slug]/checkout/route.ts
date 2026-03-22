@@ -7,7 +7,7 @@ import { getGbpToUsdRate } from '../../../../../lib/exchange-rates';
 
 export const dynamic = 'force-dynamic';
 
-const BRIDGE_URL = process.env.BRIDGE_API_URL || 'http://localhost:8000';
+// Bridge URL now read from bot document per-request
 const BRIDGE_KEY = process.env.BRIDGE_API_KEY || '';
 const COMMISSION_RATE = 0.10; // 10% service fee
 
@@ -32,6 +32,7 @@ export async function POST(
     }
 
     const botId = String(bot._id);
+    const bridgeUrl = (bot as any).bridge_url || (bot as any).webhook_url || process.env.BRIDGE_API_URL || "http://localhost:8000";
     const sessionId = getSessionId(request);
     if (!sessionId) {
       return NextResponse.json({ error: 'No session' }, { status: 401 });
@@ -100,18 +101,28 @@ export async function POST(
       const lineTotal = Math.round(currentPrice * item.quantity * 100) / 100;
       subtotal += lineTotal;
 
-      // Check stock via variations
+      // Check stock: null/undefined = unlimited (matches Telegram bot behavior)
+      const productStock = (p as any).stock as number | null | undefined;
       const variations = p.variations as Array<{ stock?: number }> | undefined;
-      const totalStock = (variations || []).reduce(
-        (sum: number, v: { stock?: number }) => sum + (v.stock ?? 0),
-        0
-      );
-      if (variations && variations.length > 0 && totalStock < item.quantity) {
+      const hasProductStock = productStock !== undefined && productStock !== null;
+      const hasVariationStock = variations?.some((v: { stock?: number }) => v.stock !== undefined && v.stock !== null) ?? false;
+      if (hasProductStock && productStock < item.quantity) {
         return NextResponse.json(
           { error: `Insufficient stock for ${p.name}` },
           { status: 409 }
         );
+      } else if (hasVariationStock) {
+        const totalStock = (variations || []).reduce(
+          (sum: number, v: { stock?: number }) => sum + (v.stock ?? 0), 0
+        );
+        if (totalStock < item.quantity) {
+          return NextResponse.json(
+            { error: `Insufficient stock for ${p.name}` },
+            { status: 409 }
+          );
+        }
       }
+      // No stock field = unlimited = allow
 
       itemsSnapshot.push({
         product_id: item.product_id,
@@ -214,7 +225,7 @@ export async function POST(
 
     try {
       const bridgeRes = await fetch(
-        `${BRIDGE_URL}/api/web/${botId}/create-invoice`,
+        `${bridgeUrl}/api/web/${botId}/create-invoice`,
         {
           method: 'POST',
           headers: {
@@ -226,7 +237,7 @@ export async function POST(
             fiat_amount: fiatAmount,
             crypto_currency: crypto_currency.toUpperCase(),
             address_salt: addressSalt,
-            callback_url: `${BRIDGE_URL}/api/web/webhook/payment`,
+            callback_url: `${bridgeUrl}/api/web/webhook/payment`,
           }),
           signal: AbortSignal.timeout(35000),
         }

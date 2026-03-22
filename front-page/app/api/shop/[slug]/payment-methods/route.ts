@@ -4,7 +4,7 @@ import { Bot } from '../../../../../lib/models';
 
 export const dynamic = 'force-dynamic';
 
-const BRIDGE_URL = process.env.BRIDGE_API_URL || 'http://localhost:8000';
+// Bridge URL now read from bot document per-request
 const BRIDGE_KEY = process.env.BRIDGE_API_KEY || '';
 
 export async function GET(
@@ -21,9 +21,10 @@ export async function GET(
     }
 
     const botId = String(bot._id);
+    const bridgeUrl = (bot as any).bridge_url || (bot as any).webhook_url || process.env.BRIDGE_API_URL || "http://localhost:8000";
 
     // Call Python bridge to get payment methods from SHKeeper
-    const res = await fetch(`${BRIDGE_URL}/api/web/${botId}/payment-methods`, {
+    const res = await fetch(`${bridgeUrl}/api/web/${botId}/payment-methods`, {
       headers: { 'X-Bridge-Key': BRIDGE_KEY },
       signal: AbortSignal.timeout(20000),
     });
