@@ -274,21 +274,25 @@ def create_invoice(amount: float, currency: str, order_id: str, buyer_email: str
         print(f"[SHKeeper create_invoice] API URL: {API_URL}/api/v1/{crypto_name}/payment_request")
         
         try:
+            # BTC node can be slower to respond than others
+            req_timeout = 30 if crypto_name == "BTC" else 20
             response = requests.post(
                 f"{API_URL}/api/v1/{crypto_name}/payment_request",
                 headers=headers,
                 json=payload,
-                timeout=20  # Reduced from 30 to 20 seconds - still reasonable for slow nodes
+                timeout=req_timeout
             )
         except Timeout:
+            print(f"[SHKeeper] TIMEOUT after {req_timeout}s for {crypto_name} payment request")
             return {
                 "success": False,
-                "error": f"SHKeeper timeout: The {crypto_name} node may still be syncing. Please try another cryptocurrency or wait for sync to complete."
+                "error": f"SHKeeper timeout: The {crypto_name} node took too long to respond. Please try again or use another cryptocurrency."
             }
         except RequestsConnectionError as e:
+            print(f"[SHKeeper] CONNECTION ERROR for {crypto_name}: {e}")
             return {
                 "success": False,
-                "error": f"SHKeeper connection error: Unable to connect to {crypto_name} node. The node may be down or still syncing."
+                "error": f"SHKeeper connection error: Unable to connect to {crypto_name} node. The node may be down."
             }
         except Exception as e:
             return {
@@ -302,9 +306,11 @@ def create_invoice(amount: float, currency: str, order_id: str, buyer_email: str
                 error_data = response.json()
             except:
                 pass
-            
+
             error_msg = error_data.get("message", response.text or "Unknown error")
-            
+            print(f"[SHKeeper] ERROR: {crypto_name} payment_request returned HTTP {response.status_code}: {error_msg}")
+            print(f"[SHKeeper] Full error response: {error_data or response.text}")
+
             return {
                 "success": False,
                 "error": f"Failed to create SHKeeper invoice: {error_msg}"
@@ -353,11 +359,12 @@ def create_invoice(amount: float, currency: str, order_id: str, buyer_email: str
                         "error": f"SHKeeper Bitcoin wallet not initialized. Please create/initialize the Bitcoin wallet in SHKeeper UI (http://111.90.140.72:5000/wallets). The Bitcoin node is online but the wallet needs to be set up."
                     }
                     
-                # Check if it's a node sync issue
+                # Check if it's a node connectivity issue
                 if "timeout" in error_msg.lower() or "connection" in error_msg.lower():
+                    print(f"[SHKeeper] Node connectivity issue for {crypto_name}: {error_msg}")
                     return {
                         "success": False,
-                        "error": f"SHKeeper node issue: {error_msg}. The {crypto_name} node may still be syncing. Please try another cryptocurrency."
+                        "error": f"SHKeeper node issue: {error_msg}. The {crypto_name} node may not be responding. Please try again or use another cryptocurrency."
                     }
                 return {
                     "success": False,
