@@ -35,6 +35,7 @@ export async function GET(
   return NextResponse.json({
     order: {
       order_token: order.order_token,
+      order_number: order.order_number || null,
       status,
       items_snapshot: order.items_snapshot,
       display_amount: order.display_amount,
