@@ -40,6 +40,10 @@ export interface IBot extends Document {
     order: number;         // Display order
     enabled: boolean;      // Toggle visibility
   }>;
+  web_shop_enabled?: boolean; // Whether web shop is enabled for this bot
+  web_shop_slug?: string; // URL-safe slug for the web shop (e.g., "my-shop")
+  web_shop_description?: string; // Description shown on the web shop
+  bridge_url?: string; // Bot service URL (e.g., "https://bot3.auroneth.info")
 }
 
 const BotSchema = new Schema<IBot>({

@@ -55,6 +55,10 @@ export default function EditBotPage() {
       order: number;
       enabled: boolean;
     }>,
+    web_shop_enabled: false,
+    web_shop_slug: '',
+    web_shop_description: '',
+    bridge_url: '',
   });
   const [updatingProfilePic, setUpdatingProfilePic] = useState(false);
   const [userRole, setUserRole] = useState<string | null>(null);
@@ -338,6 +342,10 @@ export default function EditBotPage() {
 
             return allButtons;
           })(),
+          web_shop_enabled: botData.web_shop_enabled || false,
+          web_shop_slug: botData.web_shop_slug || '',
+          web_shop_description: botData.web_shop_description || '',
+          bridge_url: botData.bridge_url || '',
         });
       } else {
         setError('Failed to load bot');
@@ -502,6 +510,10 @@ export default function EditBotPage() {
           { code: 'EXP', name: 'Express Delivery', cost: Number(formData.shipping_methods.EXP) || 0 },
           { code: 'NXT', name: 'Next Day Delivery', cost: Number(formData.shipping_methods.NXT) || 0 },
         ],
+        web_shop_enabled: formData.web_shop_enabled,
+        web_shop_slug: formData.web_shop_slug || formData.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''),
+        web_shop_description: formData.web_shop_description || '',
+        bridge_url: formData.bridge_url || '',
       };
 
       // Only include categories and featured if user is super-admin
@@ -1447,6 +1459,64 @@ export default function EditBotPage() {
                   </div>
                 </div>
               </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Web Shop Settings */}
+        <div className="border-t pt-4 mt-4">
+          <h3 className="text-lg font-medium text-gray-900 mb-4">Web Shop Settings</h3>
+          <div className="space-y-4">
+            <div className="flex items-center">
+              <input
+                type="checkbox"
+                id="web_shop_enabled"
+                checked={formData.web_shop_enabled}
+                onChange={(e) => setFormData({ ...formData, web_shop_enabled: e.target.checked })}
+                className="h-4 w-4 text-indigo-600 border-gray-300 rounded"
+              />
+              <label htmlFor="web_shop_enabled" className="ml-2 block text-sm font-medium text-gray-700">
+                Enable Web Shop
+              </label>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700">Web Shop Slug</label>
+              <input
+                type="text"
+                className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
+                placeholder={formData.name ? formData.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') : 'my-shop'}
+                value={formData.web_shop_slug}
+                onChange={(e) => setFormData({ ...formData, web_shop_slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '') })}
+              />
+              <p className="mt-1 text-sm text-gray-500">
+                URL-safe identifier for the web shop. Auto-generated from bot name if left empty.
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700">Web Shop Description</label>
+              <input
+                type="text"
+                className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
+                placeholder="Description shown on the web shop"
+                value={formData.web_shop_description}
+                onChange={(e) => setFormData({ ...formData, web_shop_description: e.target.value })}
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700">Bridge URL</label>
+              <input
+                type="text"
+                className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
+                placeholder="https://bot3.auroneth.info"
+                value={formData.bridge_url}
+                onChange={(e) => setFormData({ ...formData, bridge_url: e.target.value })}
+              />
+              <p className="mt-1 text-sm text-gray-500">
+                The bot service URL used by the web shop to communicate with the bot backend.
+              </p>
             </div>
           </div>
         </div>
