@@ -5,6 +5,7 @@ import { Bot, Cart } from '../../../lib/models';
 import { cookies } from 'next/headers';
 import { notFound } from 'next/navigation';
 import type { Metadata } from 'next';
+import TelegramLinkStatus from '../../../components/TelegramLinkStatus';
 
 async function getShopData(slug: string) {
   await connectDB();
@@ -73,7 +74,12 @@ export default async function ShopLayout({
 
   const cookieStore = await cookies();
   const sessionId = cookieStore.get('shop_session_id')?.value;
+  const telegramUsername = cookieStore.get('telegram_username')?.value || null;
   const cartCount = await getCartCount(String(bot._id), sessionId);
+
+  // Bot's Telegram username for the login widget
+  const botTelegramUsername = (bot as Record<string, unknown>).telegram_username as string | undefined;
+  const botId = String(bot._id);
 
   return (
     <div className="min-h-screen bg-gray-900 text-white">
@@ -93,6 +99,15 @@ export default async function ShopLayout({
             </Link>
 
             <div className="flex items-center gap-4">
+              {botTelegramUsername && (
+                <TelegramLinkStatus
+                  botUsername={botTelegramUsername}
+                  botId={botId}
+                  initialLinkedUsername={
+                    telegramUsername ? `@${telegramUsername}` : null
+                  }
+                />
+              )}
               <Link
                 href={`/shop/${slug}/cart`}
                 className="relative p-2 text-gray-300 hover:text-white transition-colors"
