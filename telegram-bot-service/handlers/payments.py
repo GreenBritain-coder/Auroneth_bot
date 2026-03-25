@@ -16,16 +16,15 @@ async def handle_payment_webhook(request: web.Request) -> web.Response:
     """Handle Blockonomics webhook for payment confirmation"""
     import os
     
-    # Verify webhook secret — fail closed if not configured
+    # Verify webhook secret — if configured, enforce it; if not set, allow through with a warning
     webhook_secret = os.getenv("WEBHOOK_SECRET")
-    if not webhook_secret:
+    if webhook_secret:
+        secret_param = request.query.get("secret", "")
+        if secret_param != webhook_secret:
+            return web.Response(text="Unauthorized: Invalid secret", status=401)
+    else:
         import logging
-        logging.warning("[Blockonomics Webhook] WEBHOOK_SECRET env var is not set. Rejecting all webhook requests.")
-        return web.Response(text="Unauthorized: Webhook secret not configured", status=401)
-    # Get secret from query parameter
-    secret_param = request.query.get("secret", "")
-    if secret_param != webhook_secret:
-        return web.Response(text="Unauthorized: Invalid secret", status=401)
+        logging.warning("[Blockonomics Webhook] WEBHOOK_SECRET env var is not set — accepting all requests. Set this env var to secure the endpoint.")
     
     db = get_database()
     orders_collection = db.orders
@@ -377,15 +376,14 @@ async def handle_cryptapi_webhook(request: web.Request) -> web.Response:
     """Handle CryptAPI webhook for payment confirmation"""
     import logging
 
-    # Verify webhook secret — fail closed if not configured
+    # Verify webhook secret — if configured, enforce it; if not set, allow through with a warning
     cryptapi_secret = os.getenv("CRYPTAPI_WEBHOOK_SECRET")
-    if not cryptapi_secret:
-        logging.warning("[CryptAPI Webhook] CRYPTAPI_WEBHOOK_SECRET env var is not set. Rejecting all webhook requests.")
-        return web.Response(text="Unauthorized: Webhook secret not configured", status=401)
-    # CryptAPI sends callbacks via GET/POST with query params — check secret query param or X-Webhook-Secret header
-    provided_secret = request.query.get("secret") or request.headers.get("X-Webhook-Secret", "")
-    if provided_secret != cryptapi_secret:
-        return web.Response(text="Unauthorized: Invalid webhook secret", status=401)
+    if cryptapi_secret:
+        provided_secret = request.query.get("secret") or request.headers.get("X-Webhook-Secret", "")
+        if provided_secret != cryptapi_secret:
+            return web.Response(text="Unauthorized: Invalid webhook secret", status=401)
+    else:
+        logging.warning("[CryptAPI Webhook] CRYPTAPI_WEBHOOK_SECRET env var is not set — accepting all requests. Set this env var to secure the endpoint.")
 
     db = get_database()
     orders_collection = db.orders
