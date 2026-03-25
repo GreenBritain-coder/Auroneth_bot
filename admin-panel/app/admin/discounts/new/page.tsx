@@ -9,17 +9,24 @@ interface Bot {
   name: string;
 }
 
+interface Product {
+  _id: string;
+  name: string;
+}
+
 export default function NewDiscountPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [bots, setBots] = useState<Bot[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
   const [formData, setFormData] = useState({
     code: '',
     description: '',
     discount_type: 'percentage' as 'percentage' | 'fixed',
     discount_value: 10,
     bot_ids: [] as string[],
+    applicable_product_ids: [] as string[],
     min_order_amount: '',
     max_discount_amount: '',
     usage_limit: '',
@@ -30,6 +37,7 @@ export default function NewDiscountPage() {
 
   useEffect(() => {
     fetchBots();
+    fetchProducts();
   }, []);
 
   const fetchBots = async () => {
@@ -41,6 +49,18 @@ export default function NewDiscountPage() {
       }
     } catch (err) {
       console.error('Error fetching bots:', err);
+    }
+  };
+
+  const fetchProducts = async () => {
+    try {
+      const response = await fetch('/api/products');
+      if (response.ok) {
+        const data = await response.json();
+        setProducts(data);
+      }
+    } catch (err) {
+      console.error('Error fetching products:', err);
     }
   };
 
@@ -90,6 +110,15 @@ export default function NewDiscountPage() {
       bot_ids: prev.bot_ids.includes(botId)
         ? prev.bot_ids.filter((id) => id !== botId)
         : [...prev.bot_ids, botId],
+    }));
+  };
+
+  const handleProductToggle = (productId: string) => {
+    setFormData((prev) => ({
+      ...prev,
+      applicable_product_ids: prev.applicable_product_ids.includes(productId)
+        ? prev.applicable_product_ids.filter((id) => id !== productId)
+        : [...prev.applicable_product_ids, productId],
     }));
   };
 
@@ -323,6 +352,35 @@ export default function NewDiscountPage() {
             </div>
             <p className="mt-1 text-sm text-gray-500">
               Leave empty to apply to all bots
+            </p>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Restrict to Products (Optional)
+            </label>
+            <div className="border border-gray-300 rounded-md p-3 max-h-48 overflow-y-auto">
+              <button
+                type="button"
+                onClick={() => setFormData({ ...formData, applicable_product_ids: [] })}
+                className="text-sm text-indigo-600 hover:text-indigo-900 mb-2"
+              >
+                {formData.applicable_product_ids.length === 0 ? 'All Products' : 'Clear Selection'}
+              </button>
+              {products.map((product) => (
+                <label key={product._id} className="flex items-center space-x-2 py-1">
+                  <input
+                    type="checkbox"
+                    checked={formData.applicable_product_ids.includes(product._id)}
+                    onChange={() => handleProductToggle(product._id)}
+                    className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                  />
+                  <span className="text-sm text-gray-700">{product.name}</span>
+                </label>
+              ))}
+            </div>
+            <p className="mt-1 text-sm text-gray-500">
+              Leave empty to allow on all products. Select specific products to restrict usage.
             </p>
           </div>
 

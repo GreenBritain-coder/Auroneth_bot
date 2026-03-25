@@ -124,6 +124,7 @@ export async function PUT(
     discount.valid_from = data.valid_from ? new Date(data.valid_from) : discount.valid_from;
     discount.valid_until = data.valid_until ? new Date(data.valid_until) : discount.valid_until;
     discount.active = data.active !== undefined ? data.active : discount.active;
+    discount.applicable_product_ids = data.applicable_product_ids !== undefined ? data.applicable_product_ids : (discount.applicable_product_ids || []);
 
     await discount.save();
     return NextResponse.json(discount);

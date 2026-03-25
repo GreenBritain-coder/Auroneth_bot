@@ -98,6 +98,7 @@ export async function POST(request: NextRequest) {
       valid_from: data.valid_from ? new Date(data.valid_from) : new Date(),
       valid_until: new Date(data.valid_until),
       active: data.active !== undefined ? data.active : true,
+      applicable_product_ids: data.applicable_product_ids || [],
       created_by: payload.userId,
     });
 

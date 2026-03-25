@@ -2514,6 +2514,18 @@ async def handle_address_input(message: Message, state: FSMContext):
 
         if discount:
             bot_id = invoice.get("bot_id")
+            # Check product restriction: if applicable_product_ids is set, at least one cart item must match
+            applicable_product_ids = discount.get("applicable_product_ids", [])
+            if applicable_product_ids:
+                cart_product_ids = [str(item.get("product_id", "")) for item in invoice.get("items", [])]
+                applicable_str = [str(pid) for pid in applicable_product_ids]
+                if not any(pid in applicable_str for pid in cart_product_ids):
+                    await message.answer(f"❌ Discount code '{discount_code}' is not valid for the products in your cart.")
+                    await invoices_collection.update_one(
+                        {"_id": invoice["_id"]},
+                        {"$set": {"waiting_for_discount": False}}
+                    )
+                    return
             if not discount.get("bot_ids") or len(discount.get("bot_ids", [])) == 0 or bot_id in discount.get("bot_ids", []):
                 if discount.get("usage_limit") is None or discount.get("used_count", 0) < discount.get("usage_limit", 0):
                     total = invoice.get("total", 0)

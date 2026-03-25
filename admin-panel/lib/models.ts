@@ -499,6 +499,7 @@ export interface IDiscount extends Document {
   valid_from: Date; // When the discount becomes valid
   valid_until: Date; // When the discount expires
   active: boolean; // Whether the discount is currently active
+  applicable_product_ids: string[]; // If set, discount only applies to carts containing these products
   created_at: Date;
   created_by?: string; // Admin user who created it
 }
@@ -516,6 +517,7 @@ const DiscountSchema = new Schema<IDiscount>({
   valid_from: { type: Date, default: Date.now },
   valid_until: { type: Date, required: true },
   active: { type: Boolean, default: true },
+  applicable_product_ids: { type: [String], default: [] },
   created_at: { type: Date, default: Date.now },
   created_by: { type: String },
 });
