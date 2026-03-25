@@ -109,7 +109,7 @@ export default function AdminLayout({
         {/* Sidebar */}
         <aside className={`
           fixed inset-y-0 left-0 z-50 w-56 bg-white border-r border-gray-200 transform transition-transform duration-200 ease-in-out
-          lg:translate-x-0 lg:static lg:z-auto
+          lg:translate-x-0 lg:static lg:z-auto lg:min-h-screen
           ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
           ${userRole === 'demo' ? 'lg:top-[41px]' : ''}
         `}>
