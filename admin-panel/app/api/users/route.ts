@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
     await connectDB();
 
     if (payload.role === 'super-admin') {
-      const users = await User.find({}).sort({ created_at: -1 });
+      const users = await User.find({}).sort({ last_seen: -1, created_at: -1 });
       return NextResponse.json(users);
     }
 
@@ -32,7 +32,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json([]);
     }
 
-    const users = await User.find({ botId: { $in: userBotIds } }).sort({ created_at: -1 });
+    const users = await User.find({ botId: { $in: userBotIds } }).sort({ last_seen: -1, created_at: -1 });
     return NextResponse.json(users);
   } catch (error) {
     console.error('Error fetching users:', error);

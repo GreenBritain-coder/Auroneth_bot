@@ -14,6 +14,8 @@ interface User {
   avatar_url?: string;
 }
 
+type Filter = 'all' | 'active' | 'new' | 'inactive' | 'never';
+
 function timeAgo(dateStr: string | undefined): string {
   if (!dateStr) return 'Never';
   const now = Date.now();
@@ -29,11 +31,29 @@ function timeAgo(dateStr: string | undefined): string {
   return new Date(dateStr).toLocaleDateString();
 }
 
+function applyFilter(users: User[], filter: Filter): User[] {
+  const now = Date.now();
+  const day = 86400000;
+  switch (filter) {
+    case 'active':
+      return users.filter(u => u.last_seen && now - new Date(u.last_seen).getTime() < 7 * day);
+    case 'new':
+      return users.filter(u => now - new Date(u.created_at).getTime() < 7 * day);
+    case 'inactive':
+      return users.filter(u => !u.last_seen || now - new Date(u.last_seen).getTime() > 30 * day);
+    case 'never':
+      return users.filter(u => !u.last_seen);
+    default:
+      return users;
+  }
+}
+
 export default function UsersPage() {
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
+  const [filter, setFilter] = useState<Filter>('all');
 
   useEffect(() => {
     fetchUsers();
@@ -55,7 +75,17 @@ export default function UsersPage() {
     }
   };
 
-  const filteredUsers = users.filter((user) => {
+  const now = Date.now();
+  const day = 86400000;
+  const counts: Record<Filter, number> = {
+    all: users.length,
+    active: users.filter(u => u.last_seen && now - new Date(u.last_seen).getTime() < 7 * day).length,
+    new: users.filter(u => now - new Date(u.created_at).getTime() < 7 * day).length,
+    inactive: users.filter(u => !u.last_seen || now - new Date(u.last_seen).getTime() > 30 * day).length,
+    never: users.filter(u => !u.last_seen).length,
+  };
+
+  const filteredUsers = applyFilter(users, filter).filter((user) => {
     if (!searchTerm) return true;
     const term = searchTerm.toLowerCase();
     return (
@@ -66,6 +96,14 @@ export default function UsersPage() {
       (user.last_name || '').toLowerCase().includes(term)
     );
   });
+
+  const tabs: { key: Filter; label: string }[] = [
+    { key: 'all', label: 'All' },
+    { key: 'active', label: 'Active' },
+    { key: 'new', label: 'New' },
+    { key: 'inactive', label: 'Inactive' },
+    { key: 'never', label: 'Never seen' },
+  ];
 
   if (loading) {
     return (
@@ -78,7 +116,7 @@ export default function UsersPage() {
   return (
     <div className="px-4 sm:px-0">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Users & Secret Phrases</h1>
           <p className="mt-1 text-sm text-gray-500">
@@ -98,6 +136,28 @@ export default function UsersPage() {
             onChange={(e) => setSearchTerm(e.target.value)}
           />
         </div>
+      </div>
+
+      {/* Filter tabs */}
+      <div className="flex gap-1 mb-4 border-b border-gray-200">
+        {tabs.map(({ key, label }) => (
+          <button
+            key={key}
+            onClick={() => setFilter(key)}
+            className={`px-3 py-2 text-sm font-medium rounded-t-md transition-colors flex items-center gap-1.5 ${
+              filter === key
+                ? 'text-indigo-600 border-b-2 border-indigo-600 -mb-px bg-white'
+                : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            {label}
+            <span className={`text-xs px-1.5 py-0.5 rounded-full ${
+              filter === key ? 'bg-indigo-100 text-indigo-600' : 'bg-gray-100 text-gray-500'
+            }`}>
+              {counts[key]}
+            </span>
+          </button>
+        ))}
       </div>
 
       {error && (
@@ -140,6 +200,9 @@ export default function UsersPage() {
                     )}
                     {!displayName && !user.username && (
                       <span className="font-mono text-sm text-gray-700">{user._id}</span>
+                    )}
+                    {now - new Date(user.created_at).getTime() < 7 * day && (
+                      <span className="text-xs px-1.5 py-0.5 rounded-full bg-green-100 text-green-600 font-medium">New</span>
                     )}
                   </div>
                   <div className="flex items-center gap-3 mt-0.5 flex-wrap">
