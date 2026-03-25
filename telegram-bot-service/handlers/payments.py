@@ -76,22 +76,28 @@ async def handle_payment_webhook(request: web.Request) -> web.Response:
         from database.addresses import mark_address_used
         await asyncio.get_event_loop().run_in_executor(None, mark_address_used, db, str(order_id))
 
-        # Create commission record if not exists
-        existing_commission = await commissions_collection.find_one({"orderId": order_id})
-        if not existing_commission:
-            commission_record = {
+        # HIGH-4: Use upsert with $setOnInsert so a duplicate webhook call is a no-op.
+        # A unique filter on {orderId, type} means only one commission record can ever
+        # be inserted per order, even under concurrent webhook retries.
+        await commissions_collection.update_one(
+            {"orderId": order_id, "type": "commission"},
+            {"$setOnInsert": {
                 "botId": order.get("botId"),
                 "orderId": order_id,
+                "type": "commission",
                 "amount": order.get("commission", 0),
-                "timestamp": datetime.utcnow()
-            }
-            await commissions_collection.insert_one(commission_record)
+                "timestamp": datetime.utcnow(),
+            }},
+            upsert=True,
+        )
 
         return web.Response(text="OK")
-    
+
     except Exception as e:
-        print(f"Webhook error: {e}")
-        return web.Response(text=f"Error: {str(e)}", status=500)
+        import logging
+        logging.getLogger(__name__).exception("[Blockonomics Webhook] Unhandled error")
+        # LOW-2: Do not expose internal error details to callers
+        return web.Response(text="Internal server error", status=500)
 
 
 async def handle_shkeeper_webhook(request: web.Request) -> web.Response:
