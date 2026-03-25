@@ -1006,7 +1006,19 @@ async def handle_confirm_checkout(callback: CallbackQuery):
         "shipping_method_code": invoice.get("shipping_method_code"),
         "discount_code": invoice.get("discount_code"),
         "discount_amount": discount_amount,
-        "items": invoice.get("items", []),  # Store all items in the order
+        "items": [
+            {
+                **oi["item"],
+                "product_name": (
+                    oi["product"].get("name", "Unknown") +
+                    (f" - {oi['product']['variations'][oi['item']['variation_index']]['name']}"
+                     if oi["item"].get("variation_index") is not None
+                     and oi["item"]["variation_index"] < len(oi["product"].get("variations", []))
+                     else "")
+                )
+            }
+            for oi in order_items
+        ] if order_items else invoice.get("items", []),  # Store enriched items with product_name
         "secret_phrase_hash": secret_phrase_hash,
         "status_history": [{
             "from_status": None,

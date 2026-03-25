@@ -24,7 +24,7 @@ interface OrderDetail {
   timestamp: string;
   encrypted_address?: string;
   source?: string;
-  items?: Array<{ product_id: string; product_name?: string; quantity: number; price: number }>;
+  items?: Array<{ product_id: string; product_name?: string; variation_index?: number; quantity: number; price: number }>;
   delivery_method?: string;
   shipping_cost?: number;
   tracking_info?: string;
@@ -298,11 +298,16 @@ export default function OrderDetailPage() {
             </div>
             <div>
               <dt className="text-sm text-gray-500">Amount</dt>
-              <dd className="text-sm font-medium">{order.amount} {order.currency || ''}</dd>
+              <dd className="text-sm font-medium">
+                £{Number(order.amount).toFixed(2)}
+                {order.currency && !['GBP','USD','EUR'].includes(order.currency.toUpperCase()) && (
+                  <span className="ml-1 text-xs text-gray-400">via {order.currency}</span>
+                )}
+              </dd>
             </div>
             <div>
               <dt className="text-sm text-gray-500">Commission</dt>
-              <dd className="text-sm">{order.commission}</dd>
+              <dd className="text-sm">£{Number(order.commission).toFixed(2)}</dd>
             </div>
             <div>
               <dt className="text-sm text-gray-500">Created</dt>

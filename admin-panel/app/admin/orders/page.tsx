@@ -281,17 +281,20 @@ export default function OrdersPage() {
                     {order.source === 'web' ? 'Web order' : <>User: <span className="font-mono text-gray-700">{order.userId || 'N/A'}</span></>}
                   </span>
                   {order.productName && (
-                    <span className="text-gray-500 truncate max-w-[200px]">{order.productName}</span>
+                    <span className="text-gray-500">{order.productName}</span>
                   )}
                 </div>
                 <div className="flex items-center gap-4">
                   <span className="text-gray-700">
                     <span className="text-gray-400 text-xs">Amount:</span>{' '}
-                    <span className="font-semibold">{formatAmount(order.amount, currency)} {currency}</span>
+                    <span className="font-semibold">£{Number(order.amount).toFixed(2)}</span>
+                    {currency && !['GBP','USD','EUR'].includes(currency.toUpperCase()) && (
+                      <span className="ml-1 text-xs text-gray-400">via {currency}</span>
+                    )}
                   </span>
                   <span className="text-gray-500">
                     <span className="text-gray-400 text-xs">Comm:</span>{' '}
-                    <span className="font-medium">{formatAmount(order.commission, currency)} {currency}</span>
+                    <span className="font-medium">£{Number(order.commission).toFixed(2)}</span>
                   </span>
                 </div>
               </div>
@@ -350,7 +353,7 @@ export default function OrdersPage() {
                 {/* Address */}
                 {order.encrypted_address && (
                   decryptedAddresses[orderId] ? (
-                    <span className="text-xs font-mono bg-gray-100 px-2 py-1 rounded text-gray-700 max-w-[200px] truncate">
+                    <span className="text-xs font-mono bg-gray-100 px-2 py-1 rounded text-gray-700">
                       {decryptedAddresses[orderId]}
                     </span>
                   ) : (
