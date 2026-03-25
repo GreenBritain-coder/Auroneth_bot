@@ -124,14 +124,13 @@ async def create_web_invoice(request: web.Request) -> web.Response:
         return web.json_response({"error": "Invalid JSON"}, status=400)
 
     order_id = data.get("order_id")
-    fiat_amount = data.get("fiat_amount")
     crypto_currency = data.get("crypto_currency")
     address_salt = data.get("address_salt", "")
     callback_url = data.get("callback_url", "")
 
-    if not all([order_id, fiat_amount, crypto_currency]):
+    if not all([order_id, crypto_currency]):
         return web.json_response(
-            {"error": "Missing required fields: order_id, fiat_amount, crypto_currency"},
+            {"error": "Missing required fields: order_id, crypto_currency"},
             status=400,
         )
 
@@ -143,6 +142,20 @@ async def create_web_invoice(request: web.Request) -> web.Response:
     bot = await db.bots.find_one({"_id": bot_oid})
     if not bot:
         return web.json_response({"error": "Bot not found"}, status=404)
+
+    # HIGH-5: Never use client-supplied fiat_amount. Look up the authoritative order
+    # total from MongoDB so that callers cannot manipulate the invoice amount.
+    order_doc = await db.orders.find_one({"_id": order_id})
+    if not order_doc:
+        try:
+            order_doc = await db.orders.find_one({"_id": ObjectId(order_id)})
+        except Exception:
+            pass
+    if not order_doc:
+        return web.json_response({"error": "Order not found"}, status=404)
+    fiat_amount = order_doc.get("total") or order_doc.get("amount")
+    if not fiat_amount:
+        return web.json_response({"error": "Order has no stored total"}, status=422)
 
     # Derive per-order encryption key: SHA256(SYSTEM_KEY + address_salt)
     system_key = os.getenv("SYSTEM_KEY", "")
@@ -302,17 +315,18 @@ async def handle_web_payment_webhook(request: web.Request) -> web.Response:
     except Exception as e:
         print(f"[WebBridge Webhook] Error marking address used: {e}")
 
-    # Create commission record
-    existing_commission = await db.commissions.find_one({"orderId": external_id})
-    if not existing_commission:
-        await db.commissions.insert_one(
-            {
-                "botId": order.get("botId"),
-                "orderId": external_id,
-                "amount": order.get("commission", 0),
-                "timestamp": datetime.utcnow(),
-            }
-        )
+    # HIGH-4: Idempotent upsert — duplicate webhook retries are no-ops.
+    await db.commissions.update_one(
+        {"orderId": external_id, "type": "commission"},
+        {"$setOnInsert": {
+            "botId": order.get("botId"),
+            "orderId": external_id,
+            "type": "commission",
+            "amount": order.get("commission", 0),
+            "timestamp": datetime.utcnow(),
+        }},
+        upsert=True,
+    )
 
     # Schedule deferred auto-payout (same as Telegram flow)
     try:

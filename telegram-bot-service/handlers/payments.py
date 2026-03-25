@@ -183,16 +183,18 @@ async def handle_shkeeper_webhook(request: web.Request) -> web.Response:
             from database.addresses import mark_address_used
             await asyncio.get_event_loop().run_in_executor(None, mark_address_used, db, str(external_id))
 
-            # Create commission record if not exists
-            existing_commission = await commissions_collection.find_one({"orderId": external_id})
-            if not existing_commission:
-                commission_record = {
+            # HIGH-4: Idempotent upsert — duplicate webhook retries are no-ops.
+            await commissions_collection.update_one(
+                {"orderId": external_id, "type": "commission"},
+                {"$setOnInsert": {
                     "botId": order.get("botId"),
                     "orderId": external_id,
+                    "type": "commission",
                     "amount": order.get("commission", 0),
-                    "timestamp": datetime.utcnow()
-                }
-                await commissions_collection.insert_one(commission_record)
+                    "timestamp": datetime.utcnow(),
+                }},
+                upsert=True,
+            )
 
             # Try to update the invoice message in Telegram to show "Paid"
             try:
@@ -267,8 +269,10 @@ async def handle_shkeeper_webhook(request: web.Request) -> web.Response:
         return web.Response(text="Accepted", status=202)
 
     except Exception as e:
-        print(f"SHKeeper webhook error: {e}")
-        return web.Response(text=f"Error: {str(e)}", status=500)
+        import logging
+        logging.getLogger(__name__).exception("[SHKeeper Webhook] Unhandled error")
+        # LOW-2: Do not expose internal error details to callers
+        return web.Response(text="Internal server error", status=500)
 
 
 PLATFORM_COMMISSION_RATE = float(os.getenv("PLATFORM_COMMISSION_RATE", "0.10"))  # 10% default
@@ -559,17 +563,19 @@ async def handle_cryptapi_webhook(request: web.Request) -> web.Response:
             await asyncio.get_event_loop().run_in_executor(None, mark_address_used, db, str(order_id))
             print(f"[CryptAPI Webhook] Order {order_id} marked as paid")
 
-            # Create commission record if not exists
-            existing_commission = await commissions_collection.find_one({"orderId": order_id})
-            if not existing_commission:
-                commission_record = {
+            # HIGH-4: Idempotent upsert — duplicate webhook retries are no-ops.
+            await commissions_collection.update_one(
+                {"orderId": order_id, "type": "commission"},
+                {"$setOnInsert": {
                     "botId": order.get("botId"),
                     "orderId": order_id,
+                    "type": "commission",
                     "amount": order.get("commission", 0),
-                    "timestamp": datetime.utcnow()
-                }
-                await commissions_collection.insert_one(commission_record)
-                print(f"[CryptAPI Webhook] Commission record created for order {order_id}")
+                    "timestamp": datetime.utcnow(),
+                }},
+                upsert=True,
+            )
+            print(f"[CryptAPI Webhook] Commission record upserted for order {order_id}")
 
             # Try to update the invoice message in Telegram to show "Paid"
             try:
@@ -625,10 +631,11 @@ async def handle_cryptapi_webhook(request: web.Request) -> web.Response:
             return web.Response(text="Payment pending", status=200)
             
     except Exception as e:
-        print(f"CryptAPI webhook error: {e}")
-        import traceback
+        import logging, traceback
+        logging.getLogger(__name__).exception("[CryptAPI Webhook] Unhandled error")
         traceback.print_exc()
-        return web.Response(text=f"Error: {str(e)}", status=500)
+        # LOW-2: Do not expose internal error details to callers
+        return web.Response(text="Internal server error", status=500)
 
 
 # This will be registered as a webhook endpoint in main.py

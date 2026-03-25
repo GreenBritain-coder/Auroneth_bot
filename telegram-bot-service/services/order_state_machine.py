@@ -96,7 +96,15 @@ async def transition_order(
     orders_collection = db.orders
     invoices_collection = db.invoices
 
+    # HIGH-2: order_id arrives as a string from webhooks (external_id).
+    # Try string lookup first; if not found, retry with ObjectId so that
+    # both storage formats (_id as string and _id as ObjectId) are handled.
     order = await orders_collection.find_one({"_id": order_id})
+    if not order:
+        try:
+            order = await orders_collection.find_one({"_id": ObjectId(order_id)})
+        except Exception:
+            pass
     if not order:
         return {"success": False, "error": "Order not found", "order": None}
 
@@ -139,9 +147,13 @@ async def transition_order(
         "note": note,
     }
 
-    # Atomic update: only succeed if current status hasn't changed
+    # HIGH-1: The filter includes BOTH _id AND paymentStatus == current_status.
+    # find_one_and_update is atomic in MongoDB — if two concurrent webhooks race,
+    # only the first will match (the second sees paymentStatus already changed)
+    # and will get None back, triggering the conflict error below. This prevents
+    # double-processing without application-level locking.
     result = await orders_collection.find_one_and_update(
-        {"_id": order_id, "paymentStatus": current_status},
+        {"_id": order["_id"], "paymentStatus": current_status},
         {
             "$set": update_set,
             "$push": {"status_history": history_entry},
