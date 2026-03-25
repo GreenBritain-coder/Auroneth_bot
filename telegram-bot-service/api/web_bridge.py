@@ -223,7 +223,7 @@ async def handle_web_payment_webhook(request: web.Request) -> web.Response:
     """
     # Verify SHKeeper API key from header
     api_key_header = request.headers.get("X-Shkeeper-Api-Key", "")
-    if not verify_webhook_signature({}, api_key_header):
+    if not verify_webhook_signature(dict(request.headers), api_key_header):
         return web.Response(text="Unauthorized: Invalid API key", status=401)
 
     db = get_database()

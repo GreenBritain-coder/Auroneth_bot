@@ -11,6 +11,9 @@ from datetime import datetime, timedelta
 load_dotenv()
 
 API_KEY = os.getenv("SHKEEPER_API_KEY")
+if not API_KEY:
+    import logging
+    logging.warning("[SHKeeper] WARNING: SHKEEPER_API_KEY env var is not set. Webhook authentication will reject all requests.")
 API_URL = os.getenv("SHKEEPER_API_URL", "https://demo.shkeeper.io")
 WEBHOOK_URL = os.getenv("WEBHOOK_URL", "")
 
@@ -719,9 +722,11 @@ def verify_webhook_signature(data: Dict, api_key: Optional[str] = None) -> bool:
     """
     # SHKeeper doesn't use HMAC signatures, but sends API key in header
     # You can verify the API key matches your configured key
+    if not API_KEY:
+        return False  # Fail closed: no API key configured
     if api_key:
         return api_key == API_KEY
-    return True  # If no key provided, assume valid (SHKeeper uses API key in header)
+    return False  # Fail closed: no key provided in request
 
 
 # --- Payouts (Basic Auth: SHKeeper UI username/password) ---
