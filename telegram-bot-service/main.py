@@ -66,7 +66,7 @@ class LoggingMiddleware(BaseMiddleware):
             db = get_database()
             if db is not None:
                 await db.users.update_one(
-                    {"_id": user_id},
+                    {"_id": str(user_id)},
                     {"$set": {"last_seen": datetime.utcnow()}},
                 )
         except Exception:
