@@ -103,8 +103,10 @@ export async function GET(request: NextRequest) {
       _id: { $in: [...allProductIds] }
     }).lean();
     const productNamesMap: Record<string, string> = {};
+    const productVariationsMap: Record<string, Array<{ name: string }>> = {};
     products.forEach((p: any) => {
       productNamesMap[String(p._id)] = p.name || 'Unknown Product';
+      productVariationsMap[String(p._id)] = p.variations || [];
     });
 
     // Convert orders to plain objects and ensure _id is a string
@@ -138,10 +140,20 @@ export async function GET(request: NextRequest) {
         }
 
         // Build items array for web orders from items_snapshot if no items field
-        const items = order.items?.map((item: any) => ({
-          ...item,
-          product_name: item.product_id ? productNamesMap[String(item.product_id)] : undefined,
-        })) || itemsSnapshot?.map((item: any) => ({
+        const items = order.items?.map((item: any) => {
+          const pid = String(item.product_id || '');
+          const baseName = item.product_name || (pid ? productNamesMap[pid] : undefined);
+          const variations = pid ? productVariationsMap[pid] : [];
+          const variationIndex = item.variation_index;
+          const variationName = (variationIndex != null && variations && variationIndex < variations.length)
+            ? variations[variationIndex].name
+            : null;
+          const displayName = baseName && variationName ? `${baseName} - ${variationName}` : (baseName || variationName);
+          return {
+            ...item,
+            product_name: displayName,
+          };
+        }) || itemsSnapshot?.map((item: any) => ({
           ...item,
           product_name: item.name,
         }));
