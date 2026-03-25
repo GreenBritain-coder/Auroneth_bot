@@ -50,7 +50,34 @@ from aiogram import BaseMiddleware
 from aiogram.types import Update, Message, CallbackQuery
 
 class LoggingMiddleware(BaseMiddleware):
+    _last_seen_cache: dict = {}  # user_id -> timestamp of last DB write
+    THROTTLE_SECONDS = 300  # Only update DB once per 5 minutes per user
+
+    async def _update_last_seen(self, user_id: int):
+        """Throttled last_seen update — writes to DB at most once per 5 min per user."""
+        import time
+        now = time.time()
+        if user_id in self._last_seen_cache and (now - self._last_seen_cache[user_id]) < self.THROTTLE_SECONDS:
+            return
+        self._last_seen_cache[user_id] = now
+        try:
+            from database.connection import get_database
+            from datetime import datetime
+            db = get_database()
+            if db is not None:
+                await db.users.update_one(
+                    {"_id": user_id},
+                    {"$set": {"last_seen": datetime.utcnow()}},
+                )
+        except Exception:
+            pass  # Never block message processing
+
     async def __call__(self, handler, event, data):
+        # Update last_seen for any user interaction
+        user = getattr(event, 'from_user', None)
+        if user and user.id:
+            await self._update_last_seen(user.id)
+
         # Log the update based on event type
         if isinstance(event, Message):
             msg = event
