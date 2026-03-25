@@ -252,6 +252,20 @@ async def handle_web_payment_webhook(request: web.Request) -> web.Response:
     if not payment_confirmed:
         return web.Response(text="Payment not confirmed", status=202)
 
+    # Validate received amount against order's expected total before marking paid
+    orders_collection = db.orders
+    order_doc = await orders_collection.find_one({"_id": external_id})
+    if order_doc:
+        expected_total = float(order_doc.get("amount", 0) or 0)
+        received_fiat = float(balance_fiat or 0)
+        tolerance = max(0.01, expected_total * 0.01)  # 1% or £0.01 minimum
+        if expected_total > 0 and received_fiat < (expected_total - tolerance):
+            print(
+                f"[WebBridge Webhook] Underpayment detected: received {received_fiat}, "
+                f"expected {expected_total} for order {external_id}"
+            )
+            return web.Response(text="OK", status=200)
+
     # Transition order via state machine
     result = await transition_order(
         db,

@@ -16,13 +16,16 @@ async def handle_payment_webhook(request: web.Request) -> web.Response:
     """Handle Blockonomics webhook for payment confirmation"""
     import os
     
-    # Verify webhook secret if configured
+    # Verify webhook secret — fail closed if not configured
     webhook_secret = os.getenv("WEBHOOK_SECRET")
-    if webhook_secret:
-        # Get secret from query parameter
-        secret_param = request.query.get("secret", "")
-        if secret_param != webhook_secret:
-            return web.Response(text="Unauthorized: Invalid secret", status=401)
+    if not webhook_secret:
+        import logging
+        logging.warning("[Blockonomics Webhook] WEBHOOK_SECRET env var is not set. Rejecting all webhook requests.")
+        return web.Response(text="Unauthorized: Webhook secret not configured", status=401)
+    # Get secret from query parameter
+    secret_param = request.query.get("secret", "")
+    if secret_param != webhook_secret:
+        return web.Response(text="Unauthorized: Invalid secret", status=401)
     
     db = get_database()
     orders_collection = db.orders
@@ -98,9 +101,9 @@ async def handle_shkeeper_webhook(request: web.Request) -> web.Response:
     
     # Verify API key from header
     api_key_header = request.headers.get("X-Shkeeper-Api-Key", "")
-    if not verify_webhook_signature({}, api_key_header):
+    if not verify_webhook_signature(dict(request.headers), api_key_header):
         return web.Response(text="Unauthorized: Invalid API key", status=401)
-    
+
     db = get_database()
     orders_collection = db.orders
     commissions_collection = db.commissions
@@ -135,6 +138,19 @@ async def handle_shkeeper_webhook(request: web.Request) -> web.Response:
             return web.Response(text="Payment not confirmed", status=202)
 
         if payment_confirmed:
+            # Validate received amount against order's expected total before marking paid
+            order_doc = await orders_collection.find_one({"_id": external_id})
+            if order_doc:
+                expected_total = float(order_doc.get("amount", 0) or 0)
+                received_fiat = float(balance_fiat or 0)
+                tolerance = max(0.01, expected_total * 0.01)  # 1% or £0.01 minimum
+                if expected_total > 0 and received_fiat < (expected_total - tolerance):
+                    print(
+                        f"[SHKeeper Webhook] Underpayment detected: received {received_fiat}, "
+                        f"expected {expected_total} for order {external_id}"
+                    )
+                    return web.Response(text="OK", status=200)
+
             # Use state machine for atomic transition
             from services.order_state_machine import transition_order
             result = await transition_order(
@@ -349,10 +365,22 @@ async def _process_auto_payout(db, order: dict, order_id: str, crypto: str, bala
 
 async def handle_cryptapi_webhook(request: web.Request) -> web.Response:
     """Handle CryptAPI webhook for payment confirmation"""
+    import logging
+
+    # Verify webhook secret — fail closed if not configured
+    cryptapi_secret = os.getenv("CRYPTAPI_WEBHOOK_SECRET")
+    if not cryptapi_secret:
+        logging.warning("[CryptAPI Webhook] CRYPTAPI_WEBHOOK_SECRET env var is not set. Rejecting all webhook requests.")
+        return web.Response(text="Unauthorized: Webhook secret not configured", status=401)
+    # CryptAPI sends callbacks via GET/POST with query params — check secret query param or X-Webhook-Secret header
+    provided_secret = request.query.get("secret") or request.headers.get("X-Webhook-Secret", "")
+    if provided_secret != cryptapi_secret:
+        return web.Response(text="Unauthorized: Invalid webhook secret", status=401)
+
     db = get_database()
     orders_collection = db.orders
     commissions_collection = db.commissions
-    
+
     print(f"[CryptAPI Webhook] Received callback request")
     print(f"[CryptAPI Webhook] Method: {request.method}")
     print(f"[CryptAPI Webhook] Query params: {dict(request.query)}")
@@ -487,8 +515,18 @@ async def handle_cryptapi_webhook(request: web.Request) -> web.Response:
         
         if not payment_confirmed:
             print(f"[CryptAPI Webhook] Payment NOT confirmed. pending={pending}, status='{status}'")
-        
+
         if payment_confirmed:
+            # Validate received crypto amount against the invoice's expected amount
+            expected_crypto = float(order.get("payment_amount", 0) or 0)
+            received_crypto = float(value_paid or 0)
+            if expected_crypto > 0 and received_crypto < (expected_crypto * 0.95):
+                print(
+                    f"[CryptAPI Webhook] Underpayment detected: received {received_crypto}, "
+                    f"expected {expected_crypto} for order {order_id}"
+                )
+                return web.Response(text="OK", status=200)
+
             # Use state machine for atomic transition
             print(f"[CryptAPI Webhook] Updating order {order_id} to paid status")
             from services.order_state_machine import transition_order
