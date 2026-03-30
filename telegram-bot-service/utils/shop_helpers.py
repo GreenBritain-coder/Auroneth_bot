@@ -290,16 +290,16 @@ def calculate_increment_amount(product: dict, variation=None) -> float:
 
 
 def _get_shipping_costs(bot_config: dict) -> dict:
-    """Get shipping costs from bot config or use defaults."""
+    """Get shipping costs from bot config. Returns only enabled methods."""
     methods = bot_config.get("shipping_methods") if bot_config else None
-    defaults = {"STD": 0, "EXP": 5, "NXT": 10}
+    defaults = {"FREE": 0, "EXP": 5, "NXT": 10}
     if methods and isinstance(methods, list):
-        out = dict(defaults)
+        out = {}
         for m in methods:
             if isinstance(m, dict) and m.get("code"):
                 cost = m.get("cost", 0)
                 out[m["code"]] = float(cost) if cost is not None else 0
-        return out
+        return out if out else defaults
     return defaults
 
 

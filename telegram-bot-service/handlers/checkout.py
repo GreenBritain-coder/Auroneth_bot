@@ -644,22 +644,24 @@ async def handle_checkout_delivery(callback: CallbackQuery):
     costs = _get_shipping_costs(bot_config)
     currency = invoice.get("currency", "GBP")
 
-    # Delivery method options with cost in button text
-    keyboard_buttons = [
-        [InlineKeyboardButton(
-            text=f"🚚 Standard Delivery - {_format_shipping_cost(costs.get('STD', 0), currency)}",
-            callback_data=f"del_sel:{invoice_id}:STD"
-        )],
-        [InlineKeyboardButton(
-            text=f"⚡ Express Delivery - {_format_shipping_cost(costs.get('EXP', 0), currency)}",
-            callback_data=f"del_sel:{invoice_id}:EXP"
-        )],
-        [InlineKeyboardButton(
-            text=f"📦 Next Day Delivery - {_format_shipping_cost(costs.get('NXT', 0), currency)}",
-            callback_data=f"del_sel:{invoice_id}:NXT"
-        )],
-        [InlineKeyboardButton(text="❌ Cancel", callback_data=f"back:{invoice_id}")]
-    ]
+    # Delivery method options — only show enabled methods from bot config
+    method_labels = {
+        "FREE": "🚚 Free Delivery",
+        "EXP": "⚡ Express Delivery",
+        "NXT": "📦 Next Day Delivery",
+    }
+
+    keyboard_buttons = []
+    for code in sorted(costs.keys()):  # Sort for consistent order
+        label = method_labels.get(code, f"{code} Delivery")
+        cost = costs[code]
+        button_text = f"{label} - {_format_shipping_cost(cost, currency)}"
+        keyboard_buttons.append([InlineKeyboardButton(
+            text=button_text,
+            callback_data=f"del_sel:{invoice_id}:{code}"
+        )])
+
+    keyboard_buttons.append([InlineKeyboardButton(text="❌ Cancel", callback_data=f"back:{invoice_id}")])
 
     keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
 
@@ -683,7 +685,7 @@ async def handle_checkout_delivery_select(callback: CallbackQuery):
 
     # Map codes to full names
     delivery_map = {
-        "STD": "Standard",
+        "FREE": "Free",
         "EXP": "Express",
         "NXT": "Next Day"
     }

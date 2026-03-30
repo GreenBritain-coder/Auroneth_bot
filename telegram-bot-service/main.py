@@ -69,8 +69,8 @@ class LoggingMiddleware(BaseMiddleware):
                     {"_id": str(user_id)},
                     {"$set": {"last_seen": datetime.utcnow()}},
                 )
-        except Exception:
-            pass  # Never block message processing
+        except Exception as e:
+            print(f"[last_seen] Failed to update for user {user_id}: {e}", flush=True)
 
     async def __call__(self, handler, event, data):
         # Update last_seen for any user interaction
