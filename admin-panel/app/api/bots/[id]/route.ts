@@ -193,6 +193,15 @@ export async function PATCH(
     if ('web_shop_description' in updateData) {
       existingBot.markModified('web_shop_description');
     }
+    if ('payout_ltc_address' in updateData) {
+      existingBot.markModified('payout_ltc_address');
+    }
+    if ('payout_btc_address' in updateData) {
+      existingBot.markModified('payout_btc_address');
+    }
+    if ('payout_usdt_address' in updateData) {
+      existingBot.markModified('payout_usdt_address');
+    }
 
     // Save the bot to ensure all changes are persisted
     await existingBot.save();

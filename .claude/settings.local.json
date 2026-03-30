@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(curl:*)",
+      "Bash(git -C \"C:/Users/Scott-PC/Documents/GitHub/Auroneth.bot\" status --short)",
+      "Bash(git -C \"C:/Users/Scott-PC/Documents/GitHub/Auroneth.bot\" branch --show-current)",
+      "Bash(git:*)",
+      "Bash(scp:*)",
+      "Bash(ssh greenbritain:*)"
+    ]
+  }
+}

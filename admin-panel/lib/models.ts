@@ -30,6 +30,9 @@ export interface IBot extends Document {
   vendor_pgp_key?: string; // Vendor's public PGP key
   webhook_url?: string; // Webhook URL for payment callbacks (e.g., "https://your-domain.com" or "http://localhost:8000")
   payment_methods?: string[]; // Supported payment methods (e.g., ["BTC", "LTC"])
+  payout_ltc_address?: string; // LTC payout address
+  payout_btc_address?: string; // BTC payout address
+  payout_usdt_address?: string; // USDT (TRC20) payout address
   cut_off_time?: string; // Cut-off time in HH:MM format (e.g., "14:30")
   shipping_methods?: Array<{ code: string; name: string; cost: number }>; // Delivery methods with costs (STD, EXP, NXT)
   custom_buttons?: Array<{
@@ -73,6 +76,9 @@ const BotSchema = new Schema<IBot>({
   vendor_pgp_key: { type: String }, // Vendor's public PGP key
   webhook_url: { type: String }, // Webhook URL for payment callbacks
   payment_methods: { type: [String], default: ['BTC', 'LTC'] }, // Supported payment methods (BTC/LTC only)
+  payout_ltc_address: { type: String }, // LTC payout address
+  payout_btc_address: { type: String }, // BTC payout address
+  payout_usdt_address: { type: String }, // USDT (TRC20) payout address
   cut_off_time: { type: String }, // Cut-off time in HH:MM format (e.g., "14:30")
   shipping_methods: { type: [Schema.Types.Mixed], default: [] }, // Delivery methods with costs (code, name, cost)
   custom_buttons: { type: [Schema.Types.Mixed], default: [] }, // Custom menu buttons with label, message, type, url, order, enabled

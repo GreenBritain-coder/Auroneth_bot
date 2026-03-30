@@ -1458,26 +1458,14 @@ export default function EditBotPage() {
                     />
                     <span className="ml-2 text-sm text-gray-700">LTC (Litecoin)</span>
                   </label>
-                  <label className="flex items-center">
+                  <label className="flex items-center opacity-50 cursor-not-allowed">
                     <input
                       type="checkbox"
-                      className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-                      checked={formData.payment_methods.includes('USDT')}
-                      onChange={(e) => {
-                        if (e.target.checked) {
-                          setFormData({
-                            ...formData,
-                            payment_methods: [...formData.payment_methods.filter(m => m !== 'USDT'), 'USDT'],
-                          });
-                        } else {
-                          setFormData({
-                            ...formData,
-                            payment_methods: formData.payment_methods.filter(m => m !== 'USDT'),
-                          });
-                        }
-                      }}
+                      className="rounded border-gray-300 text-gray-400 focus:ring-gray-400 cursor-not-allowed"
+                      disabled
+                      checked={false}
                     />
-                    <span className="ml-2 text-sm text-gray-700">USDT (Tether TRC20)</span>
+                    <span className="ml-2 text-sm text-gray-500">USDT (Tether TRC20) - Coming Soon</span>
                   </label>
                 </div>
                 <p className="mt-2 text-sm text-gray-500">
@@ -1511,13 +1499,13 @@ export default function EditBotPage() {
                       placeholder="bc1q... or 1... or 3..."
                     />
                   </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">USDT (TRC20) Payout Address</label>
+                  <div className="opacity-50">
+                    <label className="block text-xs font-medium text-gray-500 mb-1">USDT (TRC20) Payout Address - Coming Soon</label>
                     <input
                       type="text"
-                      value={formData.payout_usdt_address}
-                      onChange={(e) => setFormData({ ...formData, payout_usdt_address: e.target.value })}
-                      className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm font-mono"
+                      disabled
+                      value=""
+                      className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm font-mono bg-gray-100 text-gray-400 cursor-not-allowed"
                       placeholder="T... (TRON TRC20 address)"
                     />
                   </div>
