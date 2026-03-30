@@ -74,6 +74,7 @@ const BotSchema = new Schema<IBot>({
   webhook_url: { type: String }, // Webhook URL for payment callbacks
   payment_methods: { type: [String], default: ['BTC', 'LTC'] }, // Supported payment methods (BTC/LTC only)
   cut_off_time: { type: String }, // Cut-off time in HH:MM format (e.g., "14:30")
+  shipping_methods: { type: [Schema.Types.Mixed], default: [] }, // Delivery methods with costs (code, name, cost)
   custom_buttons: { type: [Schema.Types.Mixed], default: [] }, // Custom menu buttons with label, message, type, url, order, enabled
   web_shop_enabled: { type: Boolean, default: false },
   web_shop_slug: { type: String, default: '' },
