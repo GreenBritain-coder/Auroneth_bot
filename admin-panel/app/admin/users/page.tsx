@@ -64,7 +64,7 @@ export default function UsersPage() {
       const response = await fetch('/api/users');
       if (response.ok) {
         const data = await response.json();
-        setUsers(data);
+        setUsers(data.data || data);
       } else {
         setError('Failed to fetch users');
       }

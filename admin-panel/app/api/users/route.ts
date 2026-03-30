@@ -19,21 +19,50 @@ export async function GET(request: NextRequest) {
 
     await connectDB();
 
-    if (payload.role === 'super-admin') {
-      const users = await User.find({}).sort({ last_seen: -1, created_at: -1 });
-      return NextResponse.json(users);
+    // Pagination
+    const page = Math.max(1, parseInt(request.nextUrl.searchParams.get('page') || '1'));
+    const limit = Math.min(parseInt(request.nextUrl.searchParams.get('limit') || '50'), 100); // Max 100 per page
+    const skip = (page - 1) * limit;
+
+    let query: any = {};
+    if (payload.role !== 'super-admin') {
+      // Bot-owners and demo users only see users that belong to their bots
+      const userBots = await Bot.find({ owner: payload.userId });
+      const userBotIds = userBots.map(b => b._id.toString());
+
+      if (userBotIds.length === 0) {
+        return NextResponse.json({
+          data: [],
+          pagination: {
+            page,
+            limit,
+            total: 0,
+            totalPages: 0
+          }
+        });
+      }
+
+      query.botId = { $in: userBotIds };
     }
 
-    // Bot-owners and demo users only see users that belong to their bots
-    const userBots = await Bot.find({ owner: payload.userId });
-    const userBotIds = userBots.map(b => b._id.toString());
+    // Get total count for pagination
+    const total = await User.countDocuments(query);
 
-    if (userBotIds.length === 0) {
-      return NextResponse.json([]);
-    }
+    // Get paginated users
+    const users = await User.find(query)
+      .sort({ last_seen: -1, created_at: -1 })
+      .skip(skip)
+      .limit(limit);
 
-    const users = await User.find({ botId: { $in: userBotIds } }).sort({ last_seen: -1, created_at: -1 });
-    return NextResponse.json(users);
+    return NextResponse.json({
+      data: users,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit)
+      }
+    });
   } catch (error) {
     console.error('Error fetching users:', error);
     return NextResponse.json(

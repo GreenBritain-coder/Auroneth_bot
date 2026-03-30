@@ -19,22 +19,33 @@ export async function GET(request: NextRequest) {
     }
 
     await connectDB();
-    
+
+    // Pagination
+    const page = Math.max(1, parseInt(request.nextUrl.searchParams.get('page') || '1'));
+    const limit = Math.min(parseInt(request.nextUrl.searchParams.get('limit') || '50'), 100); // Max 100 per page
+    const skip = (page - 1) * limit;
+
     // Super-admins see all orders, bot-owners only see orders for their bots
-    let orders;
-    if (payload.role === 'super-admin') {
-      orders = await Order.find({}).sort({ timestamp: -1 }).lean();
-    } else {
+    const query = payload.role === 'super-admin' ? {} : {};
+    let userBotIds: string[] = [];
+
+    if (payload.role !== 'super-admin') {
       // Get user's bots
       const { Bot } = await import('../../../lib/models');
       const userBots = await Bot.find({ owner: payload.userId });
-      const userBotIds = userBots.map(b => b._id.toString());
-      
-      // Get orders for user's bots
-      orders = await Order.find({
-        botId: { $in: userBotIds }
-      }).sort({ timestamp: -1 }).lean();
+      userBotIds = userBots.map(b => b._id.toString());
+      query.botId = { $in: userBotIds };
     }
+
+    // Get total count for pagination
+    const total = await Order.countDocuments(query);
+
+    // Get paginated orders
+    const orders = await Order.find(query)
+      .sort({ timestamp: -1 })
+      .skip(skip)
+      .limit(limit)
+      .lean();
     
     // Fetch invoices to get notes - invoices are stored in 'invoices' collection
     // Invoice invoice_id matches order _id
@@ -180,8 +191,16 @@ export async function GET(request: NextRequest) {
         return null;
       }
     }).filter(order => order !== null);
-    
-    return NextResponse.json(ordersData);
+
+    return NextResponse.json({
+      data: ordersData,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit)
+      }
+    });
   } catch (error) {
     console.error('Error fetching orders:', error);
     return NextResponse.json(

@@ -19,20 +19,32 @@ export async function GET(request: NextRequest) {
     }
 
     await connectDB();
-    
+
+    // Pagination
+    const page = Math.max(1, parseInt(request.nextUrl.searchParams.get('page') || '1'));
+    const limit = Math.min(parseInt(request.nextUrl.searchParams.get('limit') || '50'), 100); // Max 100 per page
+    const skip = (page - 1) * limit;
+
     // Super-admins see all bots, bot-owners only see their own
-    const query = payload.role === 'super-admin' 
-      ? {} 
+    const query = payload.role === 'super-admin'
+      ? {}
       : { owner: payload.userId };
-    
-    const bots = await Bot.find(query).lean();
-    
+
+    // Get total count for pagination
+    const total = await Bot.countDocuments(query);
+
+    // Get paginated bots
+    const bots = await Bot.find(query)
+      .skip(skip)
+      .limit(limit)
+      .lean();
+
     // Get product counts for each bot (products are linked via bot_ids array)
     const botIds = bots.map(bot => bot._id.toString());
     const products = await Product.find({
       bot_ids: { $in: botIds }
     }).lean();
-    
+
     // Count products per bot
     const productCounts: Record<string, number> = {};
     products.forEach(product => {
@@ -43,14 +55,22 @@ export async function GET(request: NextRequest) {
         });
       }
     });
-    
+
     // Add product counts to bot objects
     const botsWithProductCounts = bots.map(bot => ({
       ...bot,
       products: Array(productCounts[bot._id.toString()] || 0).fill('') // Keep products array for backward compatibility, but with correct count
     }));
-    
-    return NextResponse.json(botsWithProductCounts, {
+
+    return NextResponse.json({
+      data: botsWithProductCounts,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit)
+      }
+    }, {
       headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate' },
     });
   } catch (error) {

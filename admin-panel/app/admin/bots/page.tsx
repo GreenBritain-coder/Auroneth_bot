@@ -33,7 +33,7 @@ export default function BotsPage() {
       const response = await fetch('/api/bots?t=' + Date.now());
       if (response.ok) {
         const data = await response.json();
-        setBots(data);
+        setBots(data.data || data);
       } else {
         setError('Failed to fetch bots');
       }
