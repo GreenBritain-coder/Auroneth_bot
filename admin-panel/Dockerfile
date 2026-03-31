@@ -15,7 +15,7 @@ FROM base AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 # CACHEBUST: pass --build-arg CACHEBUST=$(date +%s) to force full rebuild (e.g. in Coolify Build Args)
-ARG CACHEBUST=1
+ARG CACHEBUST=2
 RUN echo "Build cache bust: $CACHEBUST"
 COPY . .
 
