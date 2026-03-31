@@ -16,7 +16,7 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 # CACHEBUST: pass --build-arg CACHEBUST=$(date +%s) to force full rebuild (e.g. in Coolify Build Args)
 # Updated 2026-03-31 01:30 UTC - Force rebuild for USDT UI disable and wallet address fixes
-ARG CACHEBUST=2
+ARG CACHEBUST=3
 RUN echo "Build cache bust: $CACHEBUST"
 COPY . .
 

@@ -1,5 +1,6 @@
 'use client';
 
+// Force rebuild - cache bust 2026-03-31 01:40 UTC
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { CATEGORIES, getEmojisFromValues, getValuesFromEmojis } from '../../../../lib/categories';
