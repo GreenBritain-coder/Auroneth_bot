@@ -67,8 +67,9 @@ export default function EditProductPage() {
     try {
       const response = await fetch('/api/bots');
       if (response.ok) {
-        const data = await response.json();
-        setBots(data);
+        const json = await response.json();
+        const botsArray = Array.isArray(json) ? json : (json.data || []);
+        setBots(botsArray);
       }
     } catch (err) {
       console.error('Error fetching bots:', err);

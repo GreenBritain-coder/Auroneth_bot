@@ -54,11 +54,12 @@ export default function NewProductPage() {
     try {
       const response = await fetch('/api/bots');
       if (response.ok) {
-        const data = await response.json();
-        setBots(data);
+        const json = await response.json();
+        const botsArray = Array.isArray(json) ? json : (json.data || []);
+        setBots(botsArray);
         // Default: check all bots
-        if (data?.length > 0) {
-          setFormData(prev => ({ ...prev, bot_ids: data.map((b: any) => b._id) }));
+        if (botsArray.length > 0) {
+          setFormData(prev => ({ ...prev, bot_ids: botsArray.map((b: any) => b._id) }));
         }
       }
     } catch (err) {
