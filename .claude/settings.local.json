@@ -6,7 +6,8 @@
       "Bash(git -C \"C:/Users/Scott-PC/Documents/GitHub/Auroneth.bot\" branch --show-current)",
       "Bash(git:*)",
       "Bash(scp:*)",
-      "Bash(ssh greenbritain:*)"
+      "Bash(ssh greenbritain:*)",
+      "Bash(TOKEN=\"cbdaf2dc87cfd9312b37a752a333456ed0de33ce04e74f7716634cc113072a75\")"
     ]
   }
 }
