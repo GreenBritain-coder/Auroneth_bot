@@ -26,7 +26,7 @@ export async function GET(request: NextRequest) {
     const skip = (page - 1) * limit;
 
     // Super-admins see all orders, bot-owners only see orders for their bots
-    const query = payload.role === 'super-admin' ? {} : {};
+    const query: Record<string, any> = payload.role === 'super-admin' ? {} : {};
     let userBotIds: string[] = [];
 
     if (payload.role !== 'super-admin') {
